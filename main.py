@@ -326,6 +326,12 @@ def _is_ai_pick_command(text: str) -> bool:
         return False
     return t.startswith("/ai_pick")
 
+def _is_ai_history_command(text: str) -> bool:
+    t = str(text or "").strip().lower()
+    if not t:
+        return False
+    return t.startswith("/ai_history")
+
 def _extract_chatwoot_fields(body: dict):
     b = body or {}
     data = b.get("data") or b.get("payload") or b
@@ -410,6 +416,96 @@ def _format_tags(s: str) -> str:
         return ""
     parts = [p for p in re.split(r"[/\\|,\s]+", t) if p]
     return "🔥 " + " · ".join(parts[:6])
+
+def _is_prediction_success(predict_winner, result) -> bool:
+    try:
+        p = str(predict_winner).strip().lower()
+        r = str(result).strip().lower()
+        if not p or not r:
+            return False
+        return p == r
+    except Exception:
+        return False
+
+def _calc_accuracy(rows, start=None, end=None) -> float:
+    filtered = []
+    for row in rows:
+        dt = row.get("fixture_date")
+        if dt is None:
+            continue
+        if start and dt < start:
+            continue
+        if end and dt >= end:
+            continue
+        filtered.append(row)
+    total = len(filtered)
+    if total == 0:
+        return 0.0
+    success = sum(1 for r in filtered if _is_prediction_success(r.get("predict_winner"), r.get("result")))
+    return round((success / total) * 100, 1)
+
+def _ai_history_reply(body: dict) -> str:
+    country = _get_country_for_chat(body)
+    offset = _read_offset(country) if country else 0
+    now_utc = datetime.now(timezone.utc)
+    local_now = now_utc + timedelta(hours=offset)
+    local_today = datetime(local_now.year, local_now.month, local_now.day, tzinfo=timezone.utc)
+    today_start_utc = local_today - timedelta(hours=offset)
+    yesterday_start = today_start_utc - timedelta(days=1)
+    yesterday_end = today_start_utc
+    last7_start = now_utc - timedelta(days=7)
+    last7_end = now_utc
+    rows = []
+    try:
+        with psycopg.connect(_pg_dsn()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT e.fixture_id,
+                           e.predict_winner,
+                           e.result,
+                           e.confidence,
+                           f.fixture_date,
+                           f.home_name,
+                           f.away_name
+                    FROM ai_eval e
+                    INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
+                    WHERE COALESCE(e.if_bet, 0) = 1
+                      AND e.confidence > 0.6
+                      AND e.result IS NOT NULL
+                    ORDER BY f.fixture_date DESC
+                    """
+                )
+                fetched = cur.fetchall() or []
+                rows = [
+                    {
+                        "fixture_id": r[0],
+                        "predict_winner": r[1],
+                        "result": r[2],
+                        "confidence": r[3],
+                        "fixture_date": r[4],
+                        "home_name": r[5],
+                        "away_name": r[6],
+                    }
+                    for r in fetched
+                ]
+    except Exception:
+        logger.exception("DB fetch ai_history error")
+    if not rows:
+        return "暂时没有AI历史记录，可以稍后再试哦～"
+    overall = _calc_accuracy(rows)
+    acc_7d = _calc_accuracy(rows, start=last7_start, end=last7_end)
+    acc_yesterday = _calc_accuracy(rows, start=yesterday_start, end=yesterday_end)
+    emojis = []
+    for r in rows[:10]:
+        emojis.append("✅" if _is_prediction_success(r.get("predict_winner"), r.get("result")) else "❌")
+    emoji_line = "".join(emojis) if emojis else "暂无记录"
+    return (
+        f"📊 AI历史预测准确率: {overall:.1f}%\n\n"
+        f"🗓️ AI7天内预测准确率: {acc_7d:.1f}%\n\n"
+        f"🌙 AI昨日预测准确率: {acc_yesterday:.1f}%\n\n"
+        f"🎯 AI最近10场预测:\n{emoji_line}"
+    )
 
 def _ai_pick_reply(body: dict) -> str:
     country = _get_country_for_chat(body)
@@ -556,9 +652,20 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                     if acc_id_int is not None and conv_id_int is not None:
                         background_tasks.add_task(
                             send_chatwoot_reply, acc_id_int, conv_id_int, reply
-                        )
+                    )
                 except Exception:
                     logger.exception("AI pick reply error")
+            if _is_ai_history_command(content):
+                try:
+                    reply = _ai_history_reply(body)
+                    acc_id_int = _to_int(account_id)
+                    conv_id_int = _to_int(conversation_id)
+                    if acc_id_int is not None and conv_id_int is not None:
+                        background_tasks.add_task(
+                            send_chatwoot_reply, acc_id_int, conv_id_int, reply
+                        )
+                except Exception:
+                    logger.exception("AI history reply error")
         if _is_start_command(content) and message_type == "incoming":
             acc_id_int = _to_int(account_id)
             conv_id_int = _to_int(conversation_id)
