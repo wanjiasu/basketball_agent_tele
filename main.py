@@ -339,6 +339,12 @@ def _is_help_command(text: str) -> bool:
         return False
     return t.startswith("/help")
 
+def _is_ai_yesterday_command(text: str) -> bool:
+    t = str(text or "").strip().lower()
+    if not t:
+        return False
+    return t.startswith("/ai_yesterday")
+
 def _extract_chatwoot_fields(body: dict):
     b = body or {}
     data = b.get("data") or b.get("payload") or b
@@ -513,6 +519,85 @@ def _ai_history_reply(body: dict) -> str:
         f"🌙 AI昨日预测准确率: {acc_yesterday:.1f}%\n\n"
         f"🎯 AI最近10场预测:\n{emoji_line}"
     )
+
+def _ai_yesterday_reply(body: dict) -> str:
+    country = _get_country_for_chat(body)
+    offset = _read_offset(country) if country else 0
+    now_utc = datetime.now(timezone.utc)
+    local_now = now_utc + timedelta(hours=offset)
+    local_today = datetime(local_now.year, local_now.month, local_now.day, tzinfo=timezone.utc)
+    today_start_utc = local_today - timedelta(hours=offset)
+    yesterday_start = today_start_utc - timedelta(days=1)
+    yesterday_end = today_start_utc
+    rows = []
+    acc = 0.0
+    try:
+        with psycopg.connect(_pg_dsn()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    
+                    """
+                    SELECT e.fixture_id,
+                           e.predict_winner,
+                           e.result,
+                           e.confidence,
+                           f.fixture_date,
+                           f.home_name,
+                           f.away_name,
+                           CASE WHEN e.predict_winner ~ '^-?\\d+$' AND e.result ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END AS success
+                    FROM ai_eval e
+                    INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
+                    WHERE COALESCE(e.if_bet, 0) = 1
+                      AND e.confidence > 0.6
+                      AND e.result IS NOT NULL
+                      AND f.fixture_date >= %s AND f.fixture_date < %s
+                    ORDER BY f.fixture_date ASC
+                    """,
+                    (yesterday_start, yesterday_end),
+                )
+                fetched = cur.fetchall() or []
+                rows = [
+                    {
+                        "fixture_id": r[0],
+                        "predict_winner": r[1],
+                        "result": r[2],
+                        "confidence": r[3],
+                        "fixture_date": r[4],
+                        "home_name": r[5],
+                        "away_name": r[6],
+                        "success": r[7],
+                    }
+                    for r in fetched
+                ]
+                cur.execute(
+                    
+                    """
+                    SELECT COALESCE(ROUND(
+                               SUM(CASE WHEN e.predict_winner ~ '^-?\\d+$' AND e.result ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END)::numeric
+                               / NULLIF(COUNT(1), 0) * 100, 1
+                           ), 0.0) AS acc
+                    FROM ai_eval e
+                    INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
+                    WHERE COALESCE(e.if_bet, 0) = 1
+                      AND e.confidence > 0.6
+                      AND e.result IS NOT NULL
+                      AND f.fixture_date >= %s AND f.fixture_date < %s
+                    """,
+                    (yesterday_start, yesterday_end),
+                )
+                row_acc = cur.fetchone()
+                acc = float(row_acc[0]) if row_acc and row_acc[0] is not None else 0.0
+    except Exception:
+        logger.exception("DB fetch ai_yesterday error")
+    if not rows:
+        return "昨天暂无AI记录，可以稍后再试哦～"
+    lines = []
+    for i, r in enumerate(rows, 1):
+        ok = bool(r.get("success"))
+        emoji = "✅" if ok else "❌"
+        lines.append(f"{i}. {r.get('home_name')} vs {r.get('away_name')} {emoji}")
+    body_text = "\n".join(lines)
+    return f"📊 AI昨日预测准确率: {acc:.1f}%\n\n{body_text}"
 
 def _ai_pick_reply(body: dict) -> str:
     country = _get_country_for_chat(body)
@@ -696,6 +781,17 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                         )
                 except Exception:
                     logger.exception("AI history reply error")
+            if _is_ai_yesterday_command(content):
+                try:
+                    reply = _ai_yesterday_reply(body)
+                    acc_id_int = _to_int(account_id)
+                    conv_id_int = _to_int(conversation_id)
+                    if acc_id_int is not None and conv_id_int is not None:
+                        background_tasks.add_task(
+                            send_chatwoot_reply, acc_id_int, conv_id_int, reply
+                        )
+                except Exception:
+                    logger.exception("AI yesterday reply error")
         if _is_start_command(content) and message_type == "incoming":
             acc_id_int = _to_int(account_id)
             conv_id_int = _to_int(conversation_id)
