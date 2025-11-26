@@ -229,6 +229,20 @@ def send_chatwoot_reply(account_id: int, conversation_id: int, content: str) -> 
     except Exception:
         logger.exception("Chatwoot reply error")
 
+def _to_int(v):
+    try:
+        if v is None:
+            return None
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            return int(v)
+        s = str(v).strip()
+        m = re.search(r"-?\d+", s)
+        return int(m.group(0)) if m else None
+    except Exception:
+        return None
+
 def _telegram_token() -> str:
     return os.getenv("TELEGRAM_BOT_TOKEN", "")
 
@@ -642,17 +656,21 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
             choice = _normalize_country(content)
             if choice:
                 background_tasks.add_task(set_user_country, body, content)
-                if conversation_id and account_id:
+                acc_id_int = _to_int(account_id)
+                conv_id_int = _to_int(conversation_id)
+                if acc_id_int is not None and conv_id_int is not None:
                     ack = "已选择菲律宾" if choice == "PH" else "已选择美国"
                     background_tasks.add_task(
-                        send_chatwoot_reply, int(account_id), int(conversation_id), ack
+                        send_chatwoot_reply, acc_id_int, conv_id_int, ack
                     )
             if _is_ai_pick_command(content):
                 try:
                     reply = _ai_pick_reply(body)
-                    if conversation_id and account_id:
+                    acc_id_int = _to_int(account_id)
+                    conv_id_int = _to_int(conversation_id)
+                    if acc_id_int is not None and conv_id_int is not None:
                         background_tasks.add_task(
-                            send_chatwoot_reply, int(account_id), int(conversation_id), reply
+                            send_chatwoot_reply, acc_id_int, conv_id_int, reply
                         )
                 except Exception:
                     logger.exception("AI pick reply error")
@@ -660,16 +678,20 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                 try:
                     scope = _parse_history_scope(content)
                     reply = _ai_history_reply(body, scope)
-                    if conversation_id and account_id:
+                    acc_id_int = _to_int(account_id)
+                    conv_id_int = _to_int(conversation_id)
+                    if acc_id_int is not None and conv_id_int is not None:
                         background_tasks.add_task(
-                            send_chatwoot_reply, int(account_id), int(conversation_id), reply
+                            send_chatwoot_reply, acc_id_int, conv_id_int, reply
                         )
                 except Exception:
                     logger.exception("AI history reply error")
         if _is_start_command(content) and message_type == "incoming":
-            if conversation_id and account_id:
+            acc_id_int = _to_int(account_id)
+            conv_id_int = _to_int(conversation_id)
+            if acc_id_int is not None and conv_id_int is not None:
                 background_tasks.add_task(
-                    send_chatwoot_reply, int(account_id), int(conversation_id), WELCOME_TEXT
+                    send_chatwoot_reply, acc_id_int, conv_id_int, WELCOME_TEXT
                 )
             try:
                 chatroom_id_raw = _extract_chatroom_id(body)
