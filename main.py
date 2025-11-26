@@ -489,10 +489,12 @@ def _ai_history_reply(body: dict, scope: str) -> str:
                     cur.execute(
                         """
                         SELECT
-                          COUNT(*) FILTER (WHERE e.result IS NOT NULL AND btrim(e.result) <> '') AS total,
                           COUNT(*) FILTER (
-                            WHERE e.result IS NOT NULL AND btrim(e.result) <> ''
-                              AND lower(btrim(e.predict_winner)) = lower(btrim(e.result))
+                            WHERE e.result IS NOT NULL AND nullif(btrim(e.result::text), '') IS NOT NULL
+                          ) AS total,
+                          COUNT(*) FILTER (
+                            WHERE e.result IS NOT NULL AND nullif(btrim(e.result::text), '') IS NOT NULL
+                              AND lower(btrim(e.predict_winner::text)) = lower(btrim(e.result::text))
                           ) AS hit
                         FROM ai_eval e
                         INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
@@ -503,10 +505,12 @@ def _ai_history_reply(body: dict, scope: str) -> str:
                     cur.execute(
                         """
                         SELECT
-                          COUNT(*) FILTER (WHERE e.result IS NOT NULL AND btrim(e.result) <> '') AS total,
                           COUNT(*) FILTER (
-                            WHERE e.result IS NOT NULL AND btrim(e.result) <> ''
-                              AND lower(btrim(e.predict_winner)) = lower(btrim(e.result))
+                            WHERE e.result IS NOT NULL AND nullif(btrim(e.result::text), '') IS NOT NULL
+                          ) AS total,
+                          COUNT(*) FILTER (
+                            WHERE e.result IS NOT NULL AND nullif(btrim(e.result::text), '') IS NOT NULL
+                              AND lower(btrim(e.predict_winner::text)) = lower(btrim(e.result::text))
                           ) AS hit
                         FROM ai_eval e
                         INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
