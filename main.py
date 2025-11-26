@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request, BackgroundTasks
 import requests
 import psycopg
 import json
+import re
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -196,6 +197,43 @@ def send_chatwoot_reply(account_id: int, conversation_id: int, content: str) -> 
     except Exception:
         logger.exception("Chatwoot reply error")
 
+def _telegram_token() -> str:
+    return os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+def send_telegram_country_keyboard(chatroom_id_raw) -> None:
+    token = _telegram_token()
+    if not token or chatroom_id_raw is None:
+        logger.warning("Telegram token/chat_id missing, skip keyboard")
+        return
+    chat_id = None
+    try:
+        if isinstance(chatroom_id_raw, int):
+            chat_id = chatroom_id_raw
+        else:
+            m = re.search(r"-?\d+", str(chatroom_id_raw))
+            chat_id = int(m.group(0)) if m else None
+    except Exception:
+        chat_id = None
+    if chat_id is None:
+        logger.warning("Telegram chat_id parse failed, skip keyboard")
+        return
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": "请选择地区",
+        "reply_markup": {
+            "keyboard": [["🇵🇭 菲律宾"], ["🇺🇸 美国"]],
+            "resize_keyboard": True,
+            "one_time_keyboard": True,
+        },
+    }
+    try:
+        resp = requests.post(url, json=payload, timeout=10)
+        if resp.status_code >= 300:
+            logger.error(f"Telegram keyboard failed: {resp.status_code} {resp.text[:200]}")
+    except Exception:
+        logger.exception("Telegram keyboard error")
+
 def _is_start_command(text: str) -> bool:
     t = str(text or "").strip().lower()
     if not t:
@@ -345,6 +383,11 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                 background_tasks.add_task(
                     send_chatwoot_reply, int(account_id), int(conversation_id), WELCOME_TEXT
                 )
+            try:
+                chatroom_id_raw = _extract_chatroom_id(body)
+                background_tasks.add_task(send_telegram_country_keyboard, chatroom_id_raw)
+            except Exception:
+                logger.exception("Send telegram keyboard on /start failed")
             else:
                 d = body.get("data") or {}
                 p = body.get("payload") or {}
