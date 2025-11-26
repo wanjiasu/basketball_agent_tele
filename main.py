@@ -760,7 +760,8 @@ def _ai_pick_reply(body: dict) -> str:
             f"🕒 比赛时间: {when_str}\n"
             f"🏆 预测结果: {result_label}\n"
             f"🎯 把握: {confidence_pct}\n"
-            f"💡 核心观点: {tags}"
+            f"💡 核心观点: {tags}\n"
+            f"🔗 更多详情: https://betaione.com/fixture/{fixture_id}"
         )
         out.append(block)
     return "\n\n".join(out)
@@ -816,7 +817,8 @@ def _ai_pick_text_for_country(country: str) -> str:
             f"🕒 比赛时间: {when_str}\n"
             f"🏆 预测结果: {result_label}\n"
             f"🎯 把握: {confidence_pct}\n"
-            f"💡 核心观点: {tags}"
+            f"💡 核心观点: {tags}\n"
+            f"🔗 更多详情: https://betaione.com/fixture/{fixture_id}"
         )
         out.append(block)
     return "\n\n".join(out)
