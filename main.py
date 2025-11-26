@@ -466,8 +466,15 @@ def _format_tags(s: str) -> str:
     t = str(s or "").strip()
     if not t:
         return ""
-    parts = [p for p in re.split(r"[/\\|,\s]+", t) if p]
-    return "🔥 " + " · ".join(parts[:6])
+    parts = [p.strip() for p in re.split(r"[\/\|,]+", t) if p and p.strip()]
+    seen = set()
+    out = []
+    for p in parts:
+        k = p.lower()
+        if k not in seen:
+            seen.add(k)
+            out.append(p)
+    return "🔥 " + " · ".join(out[:6])
 
 def _is_prediction_success(predict_winner, result) -> bool:
     try:
