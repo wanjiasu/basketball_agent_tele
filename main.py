@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 WELCOME_TEXT = """欢迎使用客服机器人。
 我们提供赛事检索与基本面分析。
 重点覆盖：英超、西甲、意甲、德甲、法甲、欧冠、世界杯。
-请选择地区：🇵🇭 菲律宾 | 🇺🇸 美国。"""
+"""
 
 def _pg_dsn() -> str:
     user = os.getenv("POSTGRES_USER", "postgres")
@@ -222,9 +222,12 @@ def send_telegram_country_keyboard(chatroom_id_raw) -> None:
         "chat_id": chat_id,
         "text": "请选择地区",
         "reply_markup": {
-            "keyboard": [["🇵🇭 菲律宾"], ["🇺🇸 美国"]],
-            "resize_keyboard": True,
-            "one_time_keyboard": True,
+            "inline_keyboard": [
+                [
+                    {"text": "🇵🇭 菲律宾", "callback_data": "PH"},
+                    {"text": "🇺🇸 美国", "callback_data": "US"},
+                ]
+            ]
         },
     }
     try:
@@ -233,6 +236,37 @@ def send_telegram_country_keyboard(chatroom_id_raw) -> None:
             logger.error(f"Telegram keyboard failed: {resp.status_code} {resp.text[:200]}")
     except Exception:
         logger.exception("Telegram keyboard error")
+
+def _telegram_webhook_url() -> str:
+    return os.getenv("TELEGRAM_WEBHOOK_URL", "")
+
+def set_telegram_webhook() -> None:
+    token = _telegram_token()
+    url = _telegram_webhook_url()
+    if not token or not url:
+        return
+    api = f"https://api.telegram.org/bot{token}/setWebhook"
+    try:
+        resp = requests.post(api, json={"url": url}, timeout=10)
+        if resp.status_code >= 300:
+            logger.error(f"Telegram setWebhook failed: {resp.status_code} {resp.text[:200]}")
+    except Exception:
+        logger.exception("Telegram setWebhook error")
+
+def answer_callback_query(token: str, callback_id: str, text: str = None) -> None:
+    if not token or not callback_id:
+        return
+    api = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
+    payload = {"callback_query_id": callback_id}
+    if text:
+        payload["text"] = text
+        payload["show_alert"] = False
+    try:
+        resp = requests.post(api, json=payload, timeout=10)
+        if resp.status_code >= 300:
+            logger.error(f"Telegram answerCallbackQuery failed: {resp.status_code} {resp.text[:200]}")
+    except Exception:
+        logger.exception("Telegram answerCallbackQuery error")
 
 def _is_start_command(text: str) -> bool:
     t = str(text or "").strip().lower()
@@ -430,3 +464,26 @@ async def health():
 @app.on_event("startup")
 async def on_startup():
     init_db()
+    set_telegram_webhook()
+
+@app.post("/webhooks/telegram")
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
+    body = await request.json()
+    token = _telegram_token()
+    msg = body.get("message") or {}
+    cb = body.get("callback_query") or {}
+    if msg:
+        text = msg.get("text") or ""
+        if _is_start_command(text):
+            chat = msg.get("chat") or {}
+            background_tasks.add_task(send_telegram_country_keyboard, chat.get("id"))
+        choice = _normalize_country(text)
+        if choice:
+            background_tasks.add_task(set_user_country, body, text)
+    if cb:
+        data = cb.get("data") or ""
+        choice = _normalize_country(data)
+        if choice:
+            background_tasks.add_task(set_user_country, body, data)
+            background_tasks.add_task(answer_callback_query, token, cb.get("id"), "已记录选择")
+    return {"status": "ok"}
