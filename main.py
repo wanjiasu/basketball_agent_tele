@@ -5,6 +5,7 @@ import requests
 import psycopg
 import json
 import re
+from datetime import datetime, timedelta, timezone
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -76,6 +77,31 @@ def init_db() -> None:
                     """
                     ALTER TABLE users
                     ADD COLUMN IF NOT EXISTS country TEXT
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS ai_eval (
+                        id BIGSERIAL PRIMARY KEY,
+                        fixture_id BIGINT,
+                        predict_winner TEXT,
+                        confidence DOUBLE PRECISION,
+                        key_tag_evidence TEXT,
+                        if_bet SMALLINT,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS api_football_fixtures (
+                        id BIGSERIAL PRIMARY KEY,
+                        fixture_id BIGINT UNIQUE,
+                        fixture_date TIMESTAMPTZ,
+                        home_name TEXT,
+                        away_name TEXT
+                    )
                     """
                 )
                 conn.commit()
@@ -274,6 +300,12 @@ def _is_start_command(text: str) -> bool:
         return False
     return t.startswith("/start")
 
+def _is_ai_pick_command(text: str) -> bool:
+    t = str(text or "").strip().lower()
+    if not t:
+        return False
+    return t.startswith("/ai_pick")
+
 def _extract_chatwoot_fields(body: dict):
     b = body or {}
     data = b.get("data") or b.get("payload") or b
@@ -319,6 +351,88 @@ def _extract_chatroom_id(body: dict):
         if isinstance(cid, str):
             chatroom_id = cid
     return chatroom_id
+
+def _read_offset(country: str) -> int:
+    try:
+        path = os.path.join(os.path.dirname(__file__), "时差.json")
+        with open(path, "r", encoding="utf-8") as f:
+            m = json.load(f)
+        v = m.get(country)
+        return int(v) if v is not None else 0
+    except Exception:
+        return 0
+
+def _get_country_for_chat(body: dict) -> str:
+    b = body or {}
+    data = b.get("data") or b.get("payload") or b
+    chatroom_id = _extract_chatroom_id(body)
+    external_id = (
+        (data.get("sender") or {}).get("id")
+        or data.get("sender_id")
+        or (data.get("contact") or {}).get("id")
+    )
+    with psycopg.connect(_pg_dsn()) as conn:
+        with conn.cursor() as cur:
+            country = None
+            if chatroom_id is not None:
+                cur.execute("SELECT country FROM users WHERE chatroom_id = %s LIMIT 1", (str(chatroom_id),))
+                row = cur.fetchone()
+                country = row[0] if row else None
+            if (not country) and external_id is not None:
+                cur.execute("SELECT country FROM users WHERE external_id = %s LIMIT 1", (str(external_id),))
+                row = cur.fetchone()
+                country = row[0] if row else None
+            return country or None
+
+def _format_tags(s: str) -> str:
+    t = str(s or "").strip()
+    if not t:
+        return ""
+    parts = [p for p in re.split(r"[/\\|,\s]+", t) if p]
+    return "🔥 " + " · ".join(parts[:6])
+
+def _ai_pick_reply(body: dict) -> str:
+    country = _get_country_for_chat(body)
+    offset = _read_offset(country) if country else 0
+    now_utc = datetime.now(timezone.utc)
+    local = now_utc + timedelta(hours=offset)
+    local_day = datetime(local.year, local.month, local.day, tzinfo=timezone.utc)
+    start_utc = local_day - timedelta(hours=offset)
+    end_utc = start_utc + timedelta(days=1)
+    rows = []
+    with psycopg.connect(_pg_dsn()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT e.fixture_id, e.predict_winner, e.confidence, e.key_tag_evidence,
+                       f.fixture_date, f.home_name, f.away_name
+                FROM ai_eval e
+                INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
+                WHERE COALESCE(e.if_bet, 0) = 1
+                  AND e.confidence > 0.6
+                  AND f.fixture_date >= %s AND f.fixture_date < %s
+                ORDER BY f.fixture_date ASC
+                """,
+                (start_utc, end_utc),
+            )
+            rows = cur.fetchall() or []
+    if not rows:
+        return "今天暂无AI精选比赛，稍后再试试。"
+    out = []
+    for i, r in enumerate(rows, 1):
+        fixture_id, predict_winner, confidence, key_tag_evidence, fixture_date, home_name, away_name = r
+        when_local = fixture_date + timedelta(hours=offset) if fixture_date else None
+        when_str = when_local.strftime("%Y-%m-%d %H:%M") if when_local else ""
+        tags = _format_tags(key_tag_evidence)
+        block = (
+            f"⚽️ 第{i}场: {home_name} vs {away_name}\n"
+            f"🕒 比赛时间: {when_str}\n"
+            f"🏆 预测结果: {predict_winner}\n"
+            f"🎯 把握: {confidence:.2f}\n"
+            f"💡 核心观点: {tags}"
+        )
+        out.append(block)
+    return "\n\n".join(out)
 
 def _extract_external_id(body: dict):
     b = body or {}
@@ -412,6 +526,15 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                     background_tasks.add_task(
                         send_chatwoot_reply, int(account_id), int(conversation_id), ack
                     )
+            if _is_ai_pick_command(content):
+                try:
+                    reply = _ai_pick_reply(body)
+                    if conversation_id and account_id:
+                        background_tasks.add_task(
+                            send_chatwoot_reply, int(account_id), int(conversation_id), reply
+                        )
+                except Exception:
+                    logger.exception("AI pick reply error")
         if _is_start_command(content) and message_type == "incoming":
             if conversation_id and account_id:
                 background_tasks.add_task(
