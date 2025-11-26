@@ -464,7 +464,6 @@ async def health():
 @app.on_event("startup")
 async def on_startup():
     init_db()
-    set_telegram_webhook()
 
 @app.post("/webhooks/telegram")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
