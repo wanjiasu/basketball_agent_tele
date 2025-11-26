@@ -332,6 +332,12 @@ def _is_ai_history_command(text: str) -> bool:
         return False
     return t.startswith("/ai_history")
 
+def _is_help_command(text: str) -> bool:
+    t = str(text or "").strip().lower()
+    if not t:
+        return False
+    return t.startswith("/help")
+
 def _extract_chatwoot_fields(body: dict):
     b = body or {}
     data = b.get("data") or b.get("payload") or b
@@ -471,7 +477,7 @@ def _ai_history_reply(body: dict) -> str:
                     FROM ai_eval e
                     INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
                     WHERE COALESCE(e.if_bet, 0) = 1
-                      AND e.confidence > 0.6
+                      --AND e.confidence > 0.6
                       AND e.result IS NOT NULL
                     ORDER BY f.fixture_date DESC
                     """
@@ -634,6 +640,8 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
             pass
         if message_type == "incoming":
             background_tasks.add_task(store_message, body)
+            if _is_help_command(content):
+                background_tasks.add_task(send_lark_help_alert, body)
             choice = _normalize_country(content)
             if choice:
                 background_tasks.add_task(set_user_country, body, content)
@@ -742,3 +750,47 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             background_tasks.add_task(set_user_country, body, data)
             background_tasks.add_task(answer_callback_query, token, cb.get("id"), "已记录选择")
     return {"status": "ok"}
+
+def _lark_webhook_url() -> str:
+    return os.getenv("LARK_BOT_WEBHOOK_URL", "")
+
+def send_lark_help_alert(body: dict) -> None:
+    url = _lark_webhook_url()
+    if not url:
+        return
+    try:
+        b = body or {}
+        data = b.get("data") or b.get("payload") or b
+        message = data.get("message") or {}
+        conversation = data.get("conversation") or {}
+        sender = data.get("sender") or data.get("contact") or {}
+        content = data.get("content") or message.get("content") or b.get("content") or ""
+        username = sender.get("name") or data.get("name") or b.get("name") or ""
+        conversation_id = (
+            data.get("conversation_id")
+            or message.get("conversation_id")
+            or conversation.get("id")
+            or b.get("conversation_id")
+        )
+        account_id = (
+            data.get("account_id")
+            or conversation.get("account_id")
+            or message.get("account_id")
+            or b.get("account_id")
+            or (b.get("account") or {}).get("id")
+        )
+        chatroom_id = _extract_chatroom_id(body)
+        text = (
+            f"人工接入提醒\n"
+            f"用户: {username or '未知'}\n"
+            f"会话ID: {conversation_id or ''}\n"
+            f"账户ID: {account_id or ''}\n"
+            f"聊天ID: {chatroom_id or ''}\n"
+            f"请求内容: {str(content)[:300]}"
+        )
+        payload = {"msg_type": "text", "content": {"text": text}}
+        resp = requests.post(url, json=payload, timeout=10)
+        if resp.status_code >= 300:
+            logger.error(f"Lark alert failed: {resp.status_code} {resp.text[:200]}")
+    except Exception:
+        logger.exception("Lark alert error")
