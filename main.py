@@ -520,7 +520,8 @@ def _ai_pick_reply(body: dict) -> str:
     now_utc = datetime.now(timezone.utc)
     local = now_utc + timedelta(hours=offset)
     local_day = datetime(local.year, local.month, local.day, tzinfo=timezone.utc)
-    start_utc = local_day - timedelta(hours=offset)
+    tomorrow_local_day = local_day + timedelta(days=1)
+    start_utc = tomorrow_local_day - timedelta(hours=offset)
     end_utc = start_utc + timedelta(days=1)
     rows = []
     with psycopg.connect(_pg_dsn()) as conn:
@@ -540,7 +541,7 @@ def _ai_pick_reply(body: dict) -> str:
             )
             rows = cur.fetchall() or []
     if not rows:
-        return "今天暂无AI精选比赛，稍后再试试。"
+        return "明天暂无AI精选比赛，稍后再试试。"
     out = []
     for i, r in enumerate(rows, 1):
         fixture_id, predict_winner, confidence, key_tag_evidence, fixture_date, home_name, away_name = r
