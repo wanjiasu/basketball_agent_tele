@@ -490,11 +490,11 @@ def _ai_history_reply(body: dict, scope: str) -> str:
                         """
                         SELECT
                           COUNT(*) FILTER (
-                            WHERE e.result IS NOT NULL AND nullif(btrim(e.result::text), '') IS NOT NULL
+                            WHERE e.result IS NOT NULL
                           ) AS total,
                           COUNT(*) FILTER (
-                            WHERE e.result IS NOT NULL AND nullif(btrim(e.result::text), '') IS NOT NULL
-                              AND lower(btrim(e.predict_winner::text)) = lower(btrim(e.result::text))
+                            WHERE e.result IS NOT NULL
+                              AND e.predict_winner::int = e.result::int
                           ) AS hit
                         FROM ai_eval e
                         INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
@@ -506,11 +506,11 @@ def _ai_history_reply(body: dict, scope: str) -> str:
                         """
                         SELECT
                           COUNT(*) FILTER (
-                            WHERE e.result IS NOT NULL AND nullif(btrim(e.result::text), '') IS NOT NULL
+                            WHERE e.result IS NOT NULL
                           ) AS total,
                           COUNT(*) FILTER (
-                            WHERE e.result IS NOT NULL AND nullif(btrim(e.result::text), '') IS NOT NULL
-                              AND lower(btrim(e.predict_winner::text)) = lower(btrim(e.result::text))
+                            WHERE e.result IS NOT NULL
+                              AND e.predict_winner::int = e.result::int
                           ) AS hit
                         FROM ai_eval e
                         INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
@@ -554,10 +554,13 @@ def _ai_history_reply(body: dict, scope: str) -> str:
                 rows = cur.fetchall() or []
                 syms = []
                 for (pred, res) in rows:
-                    if res is None or str(res).strip() == '':
+                    if res is None:
                         syms.append('➖')
                     else:
-                        ok = str(pred or '').strip().lower() == str(res or '').strip().lower()
+                        try:
+                            ok = int(pred) == int(res)
+                        except Exception:
+                            ok = False
                         syms.append('✅' if ok else '❌')
                 return ''.join(syms) if syms else '暂无'
             if scope == '7d':
