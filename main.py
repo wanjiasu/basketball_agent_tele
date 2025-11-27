@@ -577,6 +577,7 @@ def _ai_yesterday_reply(body: dict) -> str:
     yesterday_end = today_start_utc
     rows = []
     acc = 0.0
+    logger.info(f"ai_yesterday_reply country={country} offset={offset} y_start={yesterday_start} y_end={yesterday_end}")
     try:
         with psycopg.connect(_pg_dsn()) as conn:
             with conn.cursor() as cur:
@@ -615,6 +616,7 @@ def _ai_yesterday_reply(body: dict) -> str:
                     }
                     for r in fetched
                 ]
+                logger.info(f"ai_yesterday_reply fetched_rows={len(rows)}")
                 cur.execute(
                     
                     """
@@ -633,9 +635,11 @@ def _ai_yesterday_reply(body: dict) -> str:
                 )
                 row_acc = cur.fetchone()
                 acc = float(row_acc[0]) if row_acc and row_acc[0] is not None else 0.0
+                logger.info(f"ai_yesterday_reply acc={acc}")
     except Exception:
         logger.exception("DB fetch ai_yesterday error")
     if not rows:
+        logger.warning(f"ai_yesterday_reply no rows for window start={yesterday_start} end={yesterday_end} offset={offset}")
         return "昨天暂无AI记录，可以稍后再试哦～"
     lines = []
     for i, r in enumerate(rows, 1):
@@ -655,6 +659,7 @@ def _ai_yesterday_text_for_country(country: str) -> str:
     yesterday_end = today_start_utc
     rows = []
     acc = 0.0
+    logger.info(f"ai_yesterday_text_for_country country={country} offset={offset} y_start={yesterday_start} y_end={yesterday_end}")
     try:
         with psycopg.connect(_pg_dsn()) as conn:
             with conn.cursor() as cur:
@@ -687,6 +692,7 @@ def _ai_yesterday_text_for_country(country: str) -> str:
                     }
                     for r in fetched
                 ]
+                logger.info(f"ai_yesterday_text_for_country fetched_rows={len(rows)}")
                 cur.execute(
                     """
                     SELECT COALESCE(ROUND(
@@ -704,9 +710,11 @@ def _ai_yesterday_text_for_country(country: str) -> str:
                 )
                 row_acc = cur.fetchone()
                 acc = float(row_acc[0]) if row_acc and row_acc[0] is not None else 0.0
+                logger.info(f"ai_yesterday_text_for_country acc={acc}")
     except Exception:
         logger.exception("DB fetch ai_yesterday country error")
     if not rows:
+        logger.warning(f"ai_yesterday_text_for_country no rows for window start={yesterday_start} end={yesterday_end} offset={offset}")
         return "昨天暂无AI记录，可以稍后再试哦～"
     lines = []
     for i, r in enumerate(rows, 1):
@@ -724,6 +732,7 @@ def _ai_pick_reply(body: dict) -> str:
     tomorrow_local_day = local_day + timedelta(days=1)
     start_utc = now_utc
     end_utc = tomorrow_local_day - timedelta(hours=offset) + timedelta(days=1)
+    logger.info(f"ai_pick_reply country={country} offset={offset} start_utc={start_utc} end_utc={end_utc}")
     rows = []
     with psycopg.connect(_pg_dsn()) as conn:
         with conn.cursor() as cur:
@@ -741,7 +750,9 @@ def _ai_pick_reply(body: dict) -> str:
                 (start_utc, end_utc),
             )
             rows = cur.fetchall() or []
+    logger.info(f"ai_pick_reply fetched_rows={len(rows)}")
     if not rows:
+        logger.warning(f"ai_pick_reply no rows for window start={start_utc} end={end_utc} offset={offset}")
         return "明天暂无AI精选比赛，稍后再试试。"
     out = []
     for i, r in enumerate(rows, 1):
@@ -781,6 +792,7 @@ def _ai_pick_text_for_country(country: str) -> str:
     tomorrow_local_day = local_day + timedelta(days=1)
     start_utc = now_utc
     end_utc = tomorrow_local_day - timedelta(hours=offset) + timedelta(days=1)
+    logger.info(f"ai_pick_text_for_country country={country} offset={offset} start_utc={start_utc} end_utc={end_utc}")
     rows = []
     with psycopg.connect(_pg_dsn()) as conn:
         with conn.cursor() as cur:
@@ -796,8 +808,10 @@ def _ai_pick_text_for_country(country: str) -> str:
                 (start_utc, end_utc),
             )
             rows = cur.fetchall() or []
-            
+    logger.info(f"ai_pick_text_for_country fetched_rows={len(rows)}")
+
     if not rows:
+        logger.warning(f"ai_pick_text_for_country no rows for window start={start_utc} end={end_utc} offset={offset}")
         return "暂无AI精选比赛，稍后再试试。"
     out = []
     for i, r in enumerate(rows, 1):
