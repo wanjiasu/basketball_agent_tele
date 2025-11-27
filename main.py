@@ -722,8 +722,8 @@ def _ai_pick_reply(body: dict) -> str:
     local = now_utc + timedelta(hours=offset)
     local_day = datetime(local.year, local.month, local.day, tzinfo=timezone.utc)
     tomorrow_local_day = local_day + timedelta(days=1)
-    start_utc = tomorrow_local_day - timedelta(hours=offset)
-    end_utc = start_utc + timedelta(days=1)
+    start_utc = now_utc
+    end_utc = tomorrow_local_day - timedelta(hours=offset) + timedelta(days=1)
     rows = []
     with psycopg.connect(_pg_dsn()) as conn:
         with conn.cursor() as cur:
@@ -795,14 +795,6 @@ def _ai_pick_text_for_country(country: str) -> str:
                 """,
                 (start_utc, end_utc),
             )
-            logger.info("""
-                select e.fixture_id, e.predict_winner, e.confidence, e.key_tag_evidence,
-                       f.fixture_date, f.home_name, f.away_name
-                from (select fixture_id, predict_winner, confidence, key_tag_evidence from ai_eval where if_bet = 1 and confidence > 0.6) e
-                inner join
-                (select fixture_id, fixture_date, home_name, away_name from api_football_fixtures where fixture_date >= %s and fixture_date < %s) f
-                on e.fixture_id = f.fixture_id
-                """)
             rows = cur.fetchall() or []
             
     if not rows:
