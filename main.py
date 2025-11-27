@@ -780,7 +780,7 @@ def _ai_pick_text_for_country(country: str) -> str:
     local_day = datetime(local.year, local.month, local.day, tzinfo=timezone.utc)
     tomorrow_local_day = local_day + timedelta(days=1)
     start_utc = now_utc - timedelta(hours=offset)
-    end_utc = start_utc + timedelta(days=1)
+    end_utc = tomorrow_local_day - timedelta(hours=offset) + timedelta(days=1)
     rows = []
     with psycopg.connect(_pg_dsn()) as conn:
         with conn.cursor() as cur:
