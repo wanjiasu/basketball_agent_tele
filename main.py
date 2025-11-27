@@ -591,7 +591,7 @@ def _ai_yesterday_reply(body: dict) -> str:
                            f.fixture_date,
                            f.home_name,
                            f.away_name,
-                           CASE WHEN e.predict_winner ~ '^-?\\d+$' AND e.result ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END AS success
+                           CASE WHEN (e.predict_winner)::text ~ '^-?\\d+$' AND (e.result)::text ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END AS success
                     FROM ai_eval e
                     INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
                     WHERE COALESCE(e.if_bet, 0) = 1
@@ -621,7 +621,7 @@ def _ai_yesterday_reply(body: dict) -> str:
                     
                     """
                     SELECT COALESCE(ROUND(
-                               SUM(CASE WHEN e.predict_winner ~ '^-?\\d+$' AND e.result ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END)::numeric
+                               SUM(CASE WHEN (e.predict_winner)::text ~ '^-?\\d+$' AND (e.result)::text ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END)::numeric
                                / NULLIF(COUNT(1), 0) * 100, 1
                            ), 0.0) AS acc
                     FROM ai_eval e
@@ -672,7 +672,7 @@ def _ai_yesterday_text_for_country(country: str) -> str:
                            f.fixture_date,
                            f.home_name,
                            f.away_name,
-                           CASE WHEN e.predict_winner ~ '^-?\\d+$' AND e.result ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END AS success
+                           CASE WHEN (e.predict_winner)::text ~ '^-?\\d+$' AND (e.result)::text ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END AS success
                     FROM ai_eval e
                     INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
                     WHERE COALESCE(e.if_bet, 0) = 1
@@ -696,7 +696,7 @@ def _ai_yesterday_text_for_country(country: str) -> str:
                 cur.execute(
                     """
                     SELECT COALESCE(ROUND(
-                               SUM(CASE WHEN e.predict_winner ~ '^-?\\d+$' AND e.result ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END)::numeric
+                               SUM(CASE WHEN (e.predict_winner)::text ~ '^-?\\d+$' AND (e.result)::text ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END)::numeric
                                / NULLIF(COUNT(1), 0) * 100, 1
                            ), 0.0) AS acc
                     FROM ai_eval e
@@ -731,7 +731,7 @@ def _ai_pick_reply(body: dict) -> str:
     local_day = datetime(local.year, local.month, local.day, tzinfo=timezone.utc)
     tomorrow_local_day = local_day + timedelta(days=1)
     start_utc = now_utc
-    end_utc = tomorrow_local_day - timedelta(hours=offset) + timedelta(days=1)
+    end_utc = tomorrow_local_day - timedelta(hours=offset) + timedelta(days=2)
     logger.info(f"ai_pick_reply country={country} offset={offset} start_utc={start_utc} end_utc={end_utc}")
     rows = []
     with psycopg.connect(_pg_dsn()) as conn:
