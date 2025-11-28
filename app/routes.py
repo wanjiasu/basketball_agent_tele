@@ -156,12 +156,34 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     cb = body.get("callback_query") or {}
     if msg:
         text = msg.get("text") or ""
+        chat = msg.get("chat") or {}
+        chat_id = chat.get("id")
         if is_start_command(text):
-            chat = msg.get("chat") or {}
             background_tasks.add_task(send_telegram_country_keyboard, chat.get("id"))
         choice = normalize_country(text)
         if choice:
             background_tasks.add_task(set_user_country, body, text)
+        if is_ai_pick_command(text) and chat_id is not None:
+            try:
+                hint = {"data": {"message": {"additional_attributes": {"chat_id": chat_id}}}}
+                reply = ai_pick_reply(hint)
+                background_tasks.add_task(send_telegram_message, chat_id, reply)
+            except Exception:
+                logger.exception("Telegram AI pick reply error")
+        if is_ai_history_command(text) and chat_id is not None:
+            try:
+                hint = {"data": {"message": {"additional_attributes": {"chat_id": chat_id}}}}
+                reply = ai_history_reply(hint)
+                background_tasks.add_task(send_telegram_message, chat_id, reply)
+            except Exception:
+                logger.exception("Telegram AI history reply error")
+        if is_ai_yesterday_command(text) and chat_id is not None:
+            try:
+                hint = {"data": {"message": {"additional_attributes": {"chat_id": chat_id}}}}
+                reply = ai_yesterday_reply(hint)
+                background_tasks.add_task(send_telegram_message, chat_id, reply)
+            except Exception:
+                logger.exception("Telegram AI yesterday reply error")
     if cb:
         data = cb.get("data") or ""
         choice = normalize_country(data)
