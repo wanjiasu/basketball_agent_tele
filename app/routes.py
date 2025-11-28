@@ -70,9 +70,16 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                     acc_id_int = to_int(account_id)
                     conv_id_int = to_int(conversation_id)
                     if acc_id_int is not None and conv_id_int is not None:
-                        background_tasks.add_task(
-                            send_chatwoot_reply, acc_id_int, conv_id_int, reply
-                    )
+                        if isinstance(reply, str) and len(reply) > 3500:
+                            parts = []
+                            text = reply
+                            while text:
+                                parts.append(text[:3000])
+                                text = text[3000:]
+                            for p in parts:
+                                send_chatwoot_reply(acc_id_int, conv_id_int, p)
+                        else:
+                            send_chatwoot_reply(acc_id_int, conv_id_int, reply)
                 except Exception:
                     logger.exception("AI pick reply error")
             if is_ai_history_command(content):
