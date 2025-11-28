@@ -286,7 +286,7 @@ def ai_pick_reply(body: dict) -> str:
             cur.execute(
                 """
                 SELECT e.fixture_id, e.predict_winner, e.confidence, e.key_tag_evidence,
-                       f.fixture_date, f.home_name, f.away_name
+                       f.fixture_date, f.home_name, f.away_name, e.home_odd, e.away_odd, e.draw_odd
                 FROM ai_eval e
                 INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
                 WHERE COALESCE(e.if_bet, 0) = 1
@@ -326,6 +326,9 @@ def ai_pick_reply(body: dict) -> str:
             f"🏆 预测结果: {result_label}\n"
             f"🎯 把握: {confidence_pct}\n"
             f"💡 核心观点: {tags}\n"
+            odds_line = ""
+            if home_odd != "未找到赔率" and draw_odd != "未找到赔率" and away_odd != "未找到赔率":
+                odds_line = f"💰 赔率: 主胜{home_odd} - 平局{draw_odd} - 客胜{away_odd}\n"
             f"🔗 更多详情: https://betaione.com/fixture/{fixture_id}"
         )
         out.append(block)
