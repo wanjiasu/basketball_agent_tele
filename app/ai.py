@@ -314,7 +314,7 @@ def ai_pick_reply(body: dict) -> str:
                     WHERE COALESCE(e.if_bet, 0) = 1
                       AND e.confidence > 0.6
                       AND f.fixture_date >= %s AND f.fixture_date < %s
-                    ORDER BY f.fixture_date ASC
+                    ORDER BY e.confidence DESC, f.fixture_date ASC
                     """,
                     (start_utc, end_utc),
                 )
@@ -334,7 +334,7 @@ def ai_pick_reply(body: dict) -> str:
                     WHERE COALESCE(e.if_bet, 0) = 1
                       AND e.confidence > 0.6
                       AND f.fixture_date >= %s AND f.fixture_date < %s
-                    ORDER BY f.fixture_date ASC
+                    ORDER BY e.confidence DESC, f.fixture_date ASC
                     """,
                     (start_utc, end_utc),
                 )
