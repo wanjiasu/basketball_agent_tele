@@ -105,6 +105,7 @@ def ai_history_reply(body: dict) -> str:
                     INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
                     WHERE COALESCE(e.if_bet, 0) = 1
                       AND e.result IS NOT NULL
+                      AND e.confidence>0.6
                     ORDER BY f.fixture_date DESC
                     """
                 )
