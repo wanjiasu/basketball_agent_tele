@@ -182,34 +182,141 @@ def post_agent_message(payload: dict, idempotency_key: str = None):
                         "input": {"messages": msgs},
                     }
                     if endpoint_path.endswith("/stream"):
+                        headers["Accept"] = "text/event-stream"
                         run_payload["stream_mode"] = "messages"
-                        resp = requests.post(endpoint, json=run_payload, headers=headers, timeout=30, stream=True)
+                        resp = requests.post(endpoint, json=run_payload, headers=headers, timeout=60, stream=True)
                         segments = []
+                        acc_text = ""
                         try:
                             for line in resp.iter_lines(decode_unicode=True):
                                 if not line:
                                     continue
-                                if line.startswith("data:"):
+                                s = line.strip()
+                                if s.startswith("data:"):
                                     import json as _json
                                     try:
-                                        obj = _json.loads(line[5:].strip())
+                                        obj = _json.loads(s[5:].strip())
                                     except Exception:
                                         obj = None
-                                    if isinstance(obj, dict):
-                                        out_msgs = obj.get("messages") or (obj.get("output") or {}).get("messages")
+                                    if isinstance(obj, list):
+                                        for m in obj:
+                                            c = m.get("content")
+                                            if isinstance(c, str):
+                                                if acc_text and c.startswith(acc_text):
+                                                    delta = c[len(acc_text):]
+                                                    if delta:
+                                                        segments.append(delta)
+                                                    acc_text = c
+                                                else:
+                                                    segments.append(c)
+                                                    acc_text = c
+                                            elif isinstance(c, list):
+                                                parts_text = []
+                                                for part in c:
+                                                    t = part.get("text") or part.get("output_text") or part.get("content")
+                                                    if t:
+                                                        parts_text.append(str(t))
+                                                if parts_text:
+                                                    joined = "".join(parts_text)
+                                                    if acc_text and joined.startswith(acc_text):
+                                                        delta = joined[len(acc_text):]
+                                                        if delta:
+                                                            segments.append(delta)
+                                                        acc_text = joined
+                                                    else:
+                                                        segments.append(joined)
+                                                        acc_text = joined
+                                    elif isinstance(obj, dict):
+                                        data_obj = obj.get("data") or obj
+                                        out_msgs = (
+                                            data_obj.get("messages")
+                                            or (data_obj.get("output") or {}).get("messages")
+                                        )
+                                        if not out_msgs:
+                                            delta = data_obj.get("delta") or {}
+                                            c = delta.get("content")
+                                            if isinstance(c, str):
+                                                if acc_text and c.startswith(acc_text):
+                                                    d = c[len(acc_text):]
+                                                    if d:
+                                                        segments.append(d)
+                                                    acc_text = c
+                                                else:
+                                                    segments.append(c)
+                                                    acc_text = c
+                                            elif isinstance(c, list):
+                                                parts_text = []
+                                                for part in c:
+                                                    t = part.get("text") or part.get("output_text") or part.get("content")
+                                                    if t:
+                                                        parts_text.append(str(t))
+                                                if parts_text:
+                                                    joined = "".join(parts_text)
+                                                    if acc_text and joined.startswith(acc_text):
+                                                        d = joined[len(acc_text):]
+                                                        if d:
+                                                            segments.append(d)
+                                                        acc_text = joined
+                                                    else:
+                                                        segments.append(joined)
+                                                        acc_text = joined
                                         if isinstance(out_msgs, list):
                                             for m in out_msgs:
                                                 c = m.get("content")
                                                 if isinstance(c, str):
-                                                    segments.append(c)
+                                                    if acc_text and c.startswith(acc_text):
+                                                        d = c[len(acc_text):]
+                                                        if d:
+                                                            segments.append(d)
+                                                        acc_text = c
+                                                    else:
+                                                        segments.append(c)
+                                                        acc_text = c
                                                 elif isinstance(c, list):
+                                                    parts_text = []
                                                     for part in c:
                                                         t = part.get("text") or part.get("output_text") or part.get("content")
                                                         if t:
-                                                            segments.append(str(t))
+                                                            parts_text.append(str(t))
+                                                    if parts_text:
+                                                        joined = "".join(parts_text)
+                                                        if acc_text and joined.startswith(acc_text):
+                                                            d = joined[len(acc_text):]
+                                                            if d:
+                                                                segments.append(d)
+                                                            acc_text = joined
+                                                        else:
+                                                            segments.append(joined)
+                                                            acc_text = joined
                         except Exception:
                             pass
-                        return {"segments": segments} if segments else {"reply": ""}
+                        if segments or acc_text:
+                            final_text = acc_text if acc_text else "".join(segments)
+                            return {"segments": [final_text]} if final_text else {"reply": "系统繁忙，请稍后再试。"}
+                        # fallback to non-stream
+                        try:
+                            fallback_endpoint = endpoint.replace("/stream", "")
+                            resp2 = requests.post(fallback_endpoint, json=run_payload, headers={k:v for k,v in headers.items() if k != "Accept"}, timeout=30)
+                            if resp2.status_code < 300:
+                                d2 = resp2.json()
+                                out2 = d2.get("output") or {}
+                                msgs2 = out2.get("messages") or d2.get("messages")
+                                texts = []
+                                if isinstance(msgs2, list):
+                                    for m in msgs2:
+                                        c = m.get("content")
+                                        if isinstance(c, str):
+                                            texts.append(c)
+                                        elif isinstance(c, list):
+                                            for part in c:
+                                                t = part.get("text") or part.get("output_text") or part.get("content")
+                                                if t:
+                                                    texts.append(str(t))
+                                if texts:
+                                    return {"segments": texts}
+                        except Exception:
+                            pass
+                        return {"reply": "系统繁忙，请稍后再试。"}
                     else:
                         resp = requests.post(endpoint, json=run_payload, headers=headers, timeout=20)
                 except Exception:
