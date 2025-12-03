@@ -2,18 +2,33 @@ import logging
 import os
 import requests
 import psycopg
-from .config import chatwoot_base_url, chatwoot_token, telegram_token, telegram_webhook_url
+from .config import chatwoot_base_url, chatwoot_token, telegram_token, telegram_webhook_url, allowed_account_inbox_pairs
 from .db import pg_dsn
 from .utils import extract_chatwoot_fields, extract_chatroom_id, normalize_country, to_int
 
 logger = logging.getLogger(__name__)
 
-def send_chatwoot_reply(account_id: int, conversation_id: int, content: str) -> None:
+def send_chatwoot_reply(account_id: int, conversation_id: int, content: str, inbox_id: int = None) -> None:
     base_url = chatwoot_base_url()
     token = chatwoot_token()
     if not base_url or not token:
         logger.warning("Chatwoot env missing, skip reply")
         return
+    try:
+        allowed = allowed_account_inbox_pairs()
+    except Exception:
+        allowed = set()
+    if allowed:
+        try:
+            if inbox_id is not None:
+                if (int(account_id), int(inbox_id)) not in allowed:
+                    return
+            else:
+                a = int(account_id)
+                if all(pair[0] != a for pair in allowed):
+                    return
+        except Exception:
+            return
     endpoint = f"{base_url}/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages"
     payload = {"content": content, "message_type": "outgoing", "private": False, "content_type": "text"}
     headers = {"Content-Type": "application/json", "api_access_token": token}

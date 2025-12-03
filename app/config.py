@@ -27,3 +27,39 @@ def read_offset(country: str) -> int:
         return int(v) if v is not None else 0
     except Exception:
         return 0
+
+def allowed_account_inbox_pairs():
+    try:
+        s = os.getenv("accounts_id_list", "") or os.getenv("ACCOUNTS_ID_LIST", "")
+        pairs = set()
+        if s and s.strip():
+            try:
+                data = json.loads(s)
+            except Exception:
+                data = None
+        else:
+            data = None
+        if data is None:
+            try:
+                base = os.path.dirname(os.path.dirname(__file__))
+                path = os.path.join(base, ".env")
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                import re
+                m = re.search(r"accounts_id_list\s*=\s*\[(.*?)\]", content, re.DOTALL)
+                if m:
+                    block = "[" + m.group(1) + "]"
+                    data = json.loads(block)
+            except Exception:
+                data = None
+        if isinstance(data, list):
+            for item in data:
+                try:
+                    a = int(item.get("accounts_id"))
+                    i = int(item.get("inbox_id"))
+                    pairs.add((a, i))
+                except Exception:
+                    pass
+        return pairs
+    except Exception:
+        return set()

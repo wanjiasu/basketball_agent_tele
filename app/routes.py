@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, BackgroundTasks
 from datetime import datetime, timezone
 from .config import chatwoot_base_url, chatwoot_token, telegram_token
 from .db import pg_dsn
-from .utils import extract_chatwoot_fields, is_help_command, is_ai_pick_command, is_ai_history_command, is_ai_yesterday_command, is_start_command, normalize_country, extract_chatroom_id, to_int
+from .utils import extract_chatwoot_fields, is_help_command, is_ai_pick_command, is_ai_history_command, is_ai_yesterday_command, is_start_command, normalize_country, extract_chatroom_id, to_int, extract_inbox_id
 from .services import send_chatwoot_reply, send_telegram_country_keyboard, answer_callback_query, set_user_country, store_message, send_lark_help_alert, send_telegram_message
 from .ai import ai_pick_reply, ai_history_reply, ai_yesterday_reply
 
@@ -52,6 +52,7 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                 background_tasks.add_task(set_user_country, body, content)
                 acc_id_int = to_int(account_id)
                 conv_id_int = to_int(conversation_id)
+                inbox_id_int = to_int(extract_inbox_id(body))
                 if acc_id_int is not None and conv_id_int is not None:
                     ack = (
                         ("已选择菲律宾" if choice == "PH" else "已选择美国")
@@ -62,31 +63,32 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                         + "🆘 /help - 寻求人工客服协助"
                     )
                     background_tasks.add_task(
-                        send_chatwoot_reply, acc_id_int, conv_id_int, ack
+                        send_chatwoot_reply, acc_id_int, conv_id_int, ack, inbox_id_int
                     )
             if is_ai_pick_command(content):
                 try:
                     reply = ai_pick_reply(body)
                     acc_id_int = to_int(account_id)
                     conv_id_int = to_int(conversation_id)
+                    inbox_id_int = to_int(extract_inbox_id(body))
                     if acc_id_int is not None and conv_id_int is not None:
                         if isinstance(reply, list):
                             for seg in reply:
                                 if isinstance(seg, str) and len(seg) > 3500:
                                     t = seg
                                     while t:
-                                        send_chatwoot_reply(acc_id_int, conv_id_int, t[:3000])
+                                        send_chatwoot_reply(acc_id_int, conv_id_int, t[:3000], inbox_id_int)
                                         t = t[3000:]
                                 else:
-                                    send_chatwoot_reply(acc_id_int, conv_id_int, seg)
+                                    send_chatwoot_reply(acc_id_int, conv_id_int, seg, inbox_id_int)
                         else:
                             if isinstance(reply, str) and len(reply) > 3500:
                                 t = reply
                                 while t:
-                                    send_chatwoot_reply(acc_id_int, conv_id_int, t[:3000])
+                                    send_chatwoot_reply(acc_id_int, conv_id_int, t[:3000], inbox_id_int)
                                     t = t[3000:]
                             else:
-                                send_chatwoot_reply(acc_id_int, conv_id_int, reply)
+                                send_chatwoot_reply(acc_id_int, conv_id_int, reply, inbox_id_int)
                 except Exception:
                     logger.exception("AI pick reply error")
             if is_ai_history_command(content):
@@ -94,9 +96,10 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                     reply = ai_history_reply(body)
                     acc_id_int = to_int(account_id)
                     conv_id_int = to_int(conversation_id)
+                    inbox_id_int = to_int(extract_inbox_id(body))
                     if acc_id_int is not None and conv_id_int is not None:
                         background_tasks.add_task(
-                            send_chatwoot_reply, acc_id_int, conv_id_int, reply
+                            send_chatwoot_reply, acc_id_int, conv_id_int, reply, inbox_id_int
                         )
                 except Exception:
                     logger.exception("AI history reply error")
@@ -105,18 +108,20 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                     reply = ai_yesterday_reply(body)
                     acc_id_int = to_int(account_id)
                     conv_id_int = to_int(conversation_id)
+                    inbox_id_int = to_int(extract_inbox_id(body))
                     if acc_id_int is not None and conv_id_int is not None:
                         background_tasks.add_task(
-                            send_chatwoot_reply, acc_id_int, conv_id_int, reply
+                            send_chatwoot_reply, acc_id_int, conv_id_int, reply, inbox_id_int
                         )
                 except Exception:
                     logger.exception("AI yesterday reply error")
         if is_start_command(content) and message_type == "incoming":
             acc_id_int = to_int(account_id)
             conv_id_int = to_int(conversation_id)
+            inbox_id_int = to_int(extract_inbox_id(body))
             if acc_id_int is not None and conv_id_int is not None:
                 background_tasks.add_task(
-                    send_chatwoot_reply, acc_id_int, conv_id_int, WELCOME_TEXT
+                    send_chatwoot_reply, acc_id_int, conv_id_int, WELCOME_TEXT, inbox_id_int
                 )
             try:
                 chatroom_id_raw = extract_chatroom_id(body)

@@ -116,3 +116,15 @@ def extract_chatroom_id(body: dict):
         if isinstance(cid, str):
             chatroom_id = cid
     return chatroom_id
+
+def extract_inbox_id(body: dict):
+    b = body or {}
+    data = b.get("data") or b.get("payload") or b
+    message = data.get("message") or {}
+    conversation = data.get("conversation") or {}
+    inbox_id = (
+        data.get("inbox_id")
+        or message.get("inbox_id")
+        or conversation.get("inbox_id")
+    )
+    return inbox_id
