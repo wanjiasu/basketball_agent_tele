@@ -3,7 +3,7 @@ import os
 import requests
 import psycopg
 from datetime import datetime, timezone
-from .config import chatwoot_base_url, chatwoot_token, telegram_token, telegram_webhook_url, allowed_account_inbox_pairs, agent_url, agent_name
+from .config import chatwoot_base_url, chatwoot_token, telegram_token, telegram_webhook_url, allowed_account_inbox_pairs, agent_url, agent_name, agent_endpoint_path
 from .db import pg_dsn
 from .utils import extract_chatwoot_fields, extract_chatroom_id, normalize_country, to_int
 
@@ -126,7 +126,7 @@ def post_agent_message(payload: dict, idempotency_key: str = None):
     url = agent_url()
     if not url:
         return None
-    endpoint = f"{url}/agent_chat/message"
+    endpoint = f"{url}{agent_endpoint_path()}"
     headers = {"Content-Type": "application/json"}
     if idempotency_key:
         headers["Idempotency-Key"] = idempotency_key

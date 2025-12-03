@@ -98,3 +98,18 @@ def agent_name() -> str:
     except Exception:
         pass
     return ""
+
+def agent_endpoint_path() -> str:
+    try:
+        p = os.getenv("agent_endpoint", "") or os.getenv("AGENT_ENDPOINT", "")
+        if p and p.strip():
+            t = p.strip()
+            if not t.startswith("/"):
+                t = "/" + t
+            return t
+        name = agent_name()
+        if name:
+            return f"/{name}/messages"
+        return "/messages"
+    except Exception:
+        return "/messages"
