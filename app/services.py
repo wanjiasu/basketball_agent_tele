@@ -126,16 +126,135 @@ def post_agent_message(payload: dict, idempotency_key: str = None):
     url = agent_url()
     if not url:
         return None
-    endpoint = f"{url}{agent_endpoint_path()}"
+    endpoint_path = agent_endpoint_path()
+    endpoint = f"{url}{endpoint_path}"
     headers = {"Content-Type": "application/json"}
     if idempotency_key:
         headers["Idempotency-Key"] = idempotency_key
     try:
-        resp = requests.post(endpoint, json=payload, headers=headers, timeout=10)
+        if "/a2a/" in endpoint_path:
+            try:
+                msgs = payload.get("messages") or []
+                text = None
+                if isinstance(msgs, list) and msgs:
+                    m0 = msgs[-1]
+                    c = m0.get("content")
+                    if isinstance(c, str):
+                        text = c
+                    elif isinstance(c, list):
+                        for part in c:
+                            t = part.get("text") or part.get("content") or part.get("output_text")
+                            if t:
+                                text = str(t)
+                                break
+                meta = payload.get("metadata") or {}
+                rpc_payload = {
+                    "jsonrpc": "2.0",
+                    "id": meta.get("message_id") or "",
+                    "method": "message/send",
+                    "params": {
+                        "message": {
+                            "role": "user",
+                            "parts": [{"kind": "text", "text": text or ""}],
+                        },
+                        "messageId": meta.get("message_id") or "",
+                        "thread": {"threadId": meta.get("thread_id") or ""},
+                    },
+                }
+            except Exception:
+                rpc_payload = {
+                    "jsonrpc": "2.0",
+                    "id": "",
+                    "method": "message/send",
+                    "params": {
+                        "message": {"role": "user", "parts": [{"kind": "text", "text": ""}]},
+                        "messageId": "",
+                        "thread": {"threadId": ""},
+                    },
+                }
+            resp = requests.post(endpoint, json=rpc_payload, headers=headers, timeout=10)
+        else:
+            if "/runs" in endpoint_path:
+                try:
+                    msgs = payload.get("messages") or []
+                    run_payload = {
+                        "assistant_id": agent_name() or "query_agent",
+                        "input": {"messages": msgs},
+                    }
+                    if endpoint_path.endswith("/stream"):
+                        run_payload["stream_mode"] = "messages"
+                        resp = requests.post(endpoint, json=run_payload, headers=headers, timeout=30, stream=True)
+                        segments = []
+                        try:
+                            for line in resp.iter_lines(decode_unicode=True):
+                                if not line:
+                                    continue
+                                if line.startswith("data:"):
+                                    import json as _json
+                                    try:
+                                        obj = _json.loads(line[5:].strip())
+                                    except Exception:
+                                        obj = None
+                                    if isinstance(obj, dict):
+                                        out_msgs = obj.get("messages") or (obj.get("output") or {}).get("messages")
+                                        if isinstance(out_msgs, list):
+                                            for m in out_msgs:
+                                                c = m.get("content")
+                                                if isinstance(c, str):
+                                                    segments.append(c)
+                                                elif isinstance(c, list):
+                                                    for part in c:
+                                                        t = part.get("text") or part.get("output_text") or part.get("content")
+                                                        if t:
+                                                            segments.append(str(t))
+                        except Exception:
+                            pass
+                        return {"segments": segments} if segments else {"reply": ""}
+                    else:
+                        resp = requests.post(endpoint, json=run_payload, headers=headers, timeout=20)
+                except Exception:
+                    resp = requests.post(endpoint, json=payload, headers=headers, timeout=10)
+            else:
+                resp = requests.post(endpoint, json=payload, headers=headers, timeout=10)
         if resp.status_code >= 300:
             return {"thread_id": None, "reply": "系统繁忙，请稍后再试。"}
         try:
-            return resp.json()
+            data = resp.json()
+            if "/a2a/" in endpoint_path:
+                try:
+                    err = data.get("error")
+                    if err:
+                        return {"thread_id": None, "reply": "系统繁忙，请稍后再试。"}
+                    res = data.get("result") or {}
+                    texts = []
+                    msg = res.get("message") or {}
+                    parts = msg.get("parts") or []
+                    for part in parts:
+                        t = part.get("text") or part.get("output_text") or part.get("content")
+                        if t:
+                            texts.append(str(t))
+                    if texts:
+                        return {"thread_id": (res.get("thread") or {}).get("threadId"), "segments": texts}
+                except Exception:
+                    pass
+            # /runs non-stream response normalization
+            if "/runs" in endpoint_path:
+                out = data.get("output") or {}
+                out_msgs = out.get("messages") or data.get("messages")
+                texts = []
+                if isinstance(out_msgs, list):
+                    for m in out_msgs:
+                        c = m.get("content")
+                        if isinstance(c, str):
+                            texts.append(c)
+                        elif isinstance(c, list):
+                            for part in c:
+                                t = part.get("text") or part.get("output_text") or part.get("content")
+                                if t:
+                                    texts.append(str(t))
+                if texts:
+                    return {"segments": texts}
+            return data
         except Exception:
             return {"thread_id": None, "reply": "系统繁忙，请稍后再试。"}
     except Exception:
