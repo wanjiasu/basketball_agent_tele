@@ -12,10 +12,10 @@ from .ai import ai_pick_reply, ai_history_reply, ai_yesterday_reply
 
 logger = logging.getLogger(__name__)
 
-WELCOME_TEXT = """欢迎使用客服机器人。
-我们提供AI比赛推荐与基本面分析。
-重点覆盖：英超、西甲、意甲、德甲、法甲、欧冠、世界杯。
-请选择您所在的国家, 我们将为您用更准确的时间提供推荐。
+WELCOME_TEXT = """Welcome to the support bot.
+We provide AI match recommendations and fundamentals analysis.
+Coverage highlights: Premier League, La Liga, Serie A, Bundesliga, Ligue 1, UCL, World Cup.
+Please choose your country so we can show times in your local timezone.
 """
 
 router = APIRouter()
@@ -55,12 +55,12 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                 inbox_id_int = to_int(extract_inbox_id(body))
                 if acc_id_int is not None and conv_id_int is not None:
                     ack = (
-                        ("已选择菲律宾" if choice == "PH" else "已选择美国")
+                        ("Selected Philippines" if choice == "PH" else "Selected United States")
                         + "\n\n"
-                        + "👇 可以点击左下方 menu 或直接发送以下指令\n"
-                        + "🤖 /ai_pick - 查看 AI 今日推荐\n"
-                        + "📊 /ai_history - 查看 AI 历史记录\n"
-                        + "🆘 /help - 寻求人工客服协助"
+                        + "👇 You can tap the bottom-left menu or send these commands:\n"
+                        + "🤖 /ai_pick - View today's AI picks\n"
+                        + "📊 /ai_history - View AI history\n"
+                        + "🆘 /help - Contact human support"
                     )
                     background_tasks.add_task(
                         send_chatwoot_reply, acc_id_int, conv_id_int, ack, inbox_id_int
@@ -233,5 +233,5 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         if choice:
             background_tasks.add_task(set_user_country, body, data)
             from .services import answer_callback_query
-            background_tasks.add_task(answer_callback_query, token, cb.get("id"), "已记录选择")
+            background_tasks.add_task(answer_callback_query, token, cb.get("id"), "Selection recorded")
     return {"status": "ok"}

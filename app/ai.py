@@ -125,19 +125,19 @@ def ai_history_reply(body: dict) -> str:
     except Exception:
         logger.exception("DB fetch ai_history error")
     if not rows:
-        return "暂时没有AI历史记录，可以稍后再试哦～"
+        return "No AI history available, please try again later."
     overall = calc_accuracy(rows)
     acc_7d = calc_accuracy(rows, start=last7_start, end=last7_end)
     acc_yesterday = calc_accuracy(rows, start=yesterday_start, end=yesterday_end)
     emojis = []
     for r in rows[:10]:
         emojis.append("✅" if is_prediction_success(r.get("predict_winner"), r.get("result")) else "❌")
-    emoji_line = "".join(emojis) if emojis else "暂无记录"
+    emoji_line = "".join(emojis) if emojis else "No records"
     return (
-        f"📊 AI历史预测准确率: {overall:.1f}%\n\n"
-        f"🗓️ AI7天内预测准确率: {acc_7d:.1f}%\n\n"
-        f"🌙 AI昨日预测准确率: {acc_yesterday:.1f}%\n\n"
-        f"🎯 AI最近10场预测:\n{emoji_line}"
+        f"📊 AI Overall Accuracy: {overall:.1f}%\n\n"
+        f"🗓️ AI 7-Day Accuracy: {acc_7d:.1f}%\n\n"
+        f"🌙 AI Yesterday Accuracy: {acc_yesterday:.1f}%\n\n"
+        f"🎯 Recent 10 Predictions:\n{emoji_line}"
     )
 
 def ai_yesterday_reply(body: dict) -> str:
@@ -212,14 +212,14 @@ def ai_yesterday_reply(body: dict) -> str:
         logger.exception("DB fetch ai_yesterday error")
     if not rows:
         logger.warning(f"ai_yesterday_reply no rows for window start={yesterday_start} end={yesterday_end} offset={offset}")
-        return "昨天暂无AI记录，可以稍后再试哦～"
+        return "No AI records for yesterday, please try again later."
     lines = []
     for i, r in enumerate(rows, 1):
         ok = bool(r.get("success"))
         emoji = "✅" if ok else "❌"
         lines.append(f"{i}. {r.get('home_name')} vs {r.get('away_name')} {emoji}")
     body_text = "\n".join(lines)
-    return f"📊 AI昨日预测准确率: {acc:.1f}%\n\n{body_text}"
+    return f"📊 AI Yesterday Accuracy: {acc:.1f}%\n\n{body_text}"
 
 def ai_yesterday_text_for_country(country: str) -> str:
     offset = read_offset(country) if country else 0
@@ -283,13 +283,13 @@ def ai_yesterday_text_for_country(country: str) -> str:
         logger.exception("DB fetch ai_yesterday country error")
     if not rows:
         logger.warning(f"ai_yesterday_text_for_country no rows for window start={yesterday_start} end={yesterday_end} offset={offset}")
-        return "昨天暂无AI记录，可以稍后再试哦～"
+        return "No AI records for yesterday, please try again later."
     lines = []
     for i, r in enumerate(rows, 1):
         emoji = "✅" if bool(r.get("success")) else "❌"
         lines.append(f"{i}. {r.get('home_name')} vs {r.get('away_name')} {emoji}")
     body_text = "\n".join(lines)
-    return f"📊 AI昨日预测准确率: {acc:.1f}%\n\n{body_text}"
+    return f"📊 AI Yesterday Accuracy: {acc:.1f}%\n\n{body_text}"
 
 def ai_pick_reply(body: dict) -> str:
     country = get_country_for_chat(body)
@@ -342,7 +342,7 @@ def ai_pick_reply(body: dict) -> str:
     logger.info(f"ai_pick_reply fetched_rows={len(rows)}")
     if not rows:
         logger.warning(f"ai_pick_reply no rows for window start={start_utc} end={end_utc} offset={offset}")
-        return "明天暂无AI精选比赛，稍后再试试。"
+        return "No AI picks available, please try again later."
     out = []
     for i, r in enumerate(rows, 1):
         fixture_id = r[0]
@@ -362,11 +362,11 @@ def ai_pick_reply(body: dict) -> str:
         tags = format_tags(key_tag_evidence)
         pw = str(predict_winner).strip().lower() if predict_winner is not None else ""
         if pw in ("3", "home", "主胜", "h"):
-            result_label = "主胜"
+            result_label = "Home Win"
         elif pw in ("1", "draw", "平局", "主平", "d"):
-            result_label = "主平"
+            result_label = "Draw"
         elif pw in ("0", "away", "客胜", "a"):
-            result_label = "客胜"
+            result_label = "Away Win"
         else:
             result_label = str(predict_winner)
         try:
@@ -374,21 +374,21 @@ def ai_pick_reply(body: dict) -> str:
         except Exception:
             confidence_pct = str(confidence)
         lines = [
-            f"⚽️ 第{i}场: {home_name} vs {away_name}",
-            f"🕒 比赛时间: {when_str}",
-            f"🏆 预测结果: {result_label}",
-            f"🎯 把握: {confidence_pct}",
-            f"💡 核心观点: {tags}",
+            f"⚽️ Match {i}: {home_name} vs {away_name}",
+            f"🕒 Kickoff: {when_str}",
+            f"🏆 Predicted Result: {result_label}",
+            f"🎯 Confidence: {confidence_pct}",
+            f"💡 Key Points: {tags}",
         ]
         h = _fmt_odd(home_odd)
         d = _fmt_odd(draw_odd)
         a = _fmt_odd(away_odd)
         if h and d and a:
-            lines.append(f"💰 赔率: 主胜{h} - 平局{d} - 客胜{a}")
-        lines.append(f"🔗 更多详情: https://betaione.com/fixture/{fixture_id}")
+            lines.append(f"💰 Odds: Home Win {h} - Draw {d} - Away Win {a}")
+        lines.append(f"🔗 More details: https://betaione.com/fixture/{fixture_id}")
         out.append("\n".join(lines))
     if not out:
-        return "明天暂无AI精选比赛，稍后再试试。"
+        return "No AI picks available, please try again later."
     chunks = []
     i = 0
     n = len(out)
@@ -453,7 +453,7 @@ def ai_pick_text_for_country(country: str) -> str:
     logger.info(f"ai_pick_text_for_country fetched_rows={len(rows)}")
     if not rows:
         logger.warning(f"ai_pick_text_for_country no rows for window start={start_utc} end={end_utc} offset={offset}")
-        return "暂无AI精选比赛，稍后再试试。"
+        return "No AI picks available, please try again later."
     out = []
     for i, r in enumerate(rows, 1):
         fixture_id = r[0]
@@ -471,11 +471,11 @@ def ai_pick_text_for_country(country: str) -> str:
         tags = format_tags(key_tag_evidence)
         pw = str(predict_winner).strip().lower() if predict_winner is not None else ""
         if pw in ("3", "home", "主胜", "h"):
-            result_label = "主胜"
+            result_label = "Home Win"
         elif pw in ("1", "draw", "平局", "主平", "d"):
-            result_label = "主平"
+            result_label = "Draw"
         elif pw in ("0", "away", "客胜", "a"):
-            result_label = "客胜"
+            result_label = "Away Win"
         else:
             result_label = str(predict_winner)
         try:
@@ -483,21 +483,21 @@ def ai_pick_text_for_country(country: str) -> str:
         except Exception:
             confidence_pct = str(confidence)
         lines = [
-            f"⚽️ 第{i}场: {home_name} vs {away_name}",
-            f"🕒 比赛时间: {when_str}",
-            f"🏆 预测结果: {result_label}",
-            f"🎯 把握: {confidence_pct}",
-            f"💡 核心观点: {tags}",
+            f"⚽️ Match {i}: {home_name} vs {away_name}",
+            f"🕒 Kickoff: {when_str}",
+            f"🏆 Predicted Result: {result_label}",
+            f"🎯 Confidence: {confidence_pct}",
+            f"💡 Key Points: {tags}",
         ]
         h = _fmt_odd(home_odd)
         d = _fmt_odd(draw_odd)
         a = _fmt_odd(away_odd)
         if h and d and a:
-            lines.append(f"💰 赔率: 主胜{h} - 平局{d} - 客胜{a}")
-        lines.append(f"🔗 更多详情: https://betaione.com/fixture/{fixture_id}")
+            lines.append(f"💰 Odds: Home Win {h} - Draw {d} - Away Win {a}")
+        lines.append(f"🔗 More details: https://betaione.com/fixture/{fixture_id}")
         out.append("\n".join(lines))
     if not out:
-        return "暂无AI精选比赛，稍后再试试。"
+        return "No AI picks available, please try again later."
     chunks = []
     i = 0
     n = len(out)

@@ -61,8 +61,8 @@ def send_telegram_country_keyboard(chatroom_id_raw) -> None:
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": chat_id,
-        "text": "请选择地区",
-        "reply_markup": {"inline_keyboard": [[{"text": "🇵🇭 菲律宾", "callback_data": "PH"}, {"text": "🇺🇸 美国", "callback_data": "US"}]]},
+        "text": "Please choose your region",
+        "reply_markup": {"inline_keyboard": [[{"text": "🇵🇭 Philippines", "callback_data": "PH"}, {"text": "🇺🇸 United States", "callback_data": "US"}]]},
     }
     try:
         resp = requests.post(url, json=payload, timeout=10)
@@ -407,7 +407,7 @@ def post_agent_message(payload: dict, idempotency_key: str = None, thread_id: st
                             pass
                         if segments or acc_text:
                             final_text = acc_text if acc_text else "".join(segments)
-                            return {"segments": [final_text]} if final_text else {"reply": "系统繁忙，请稍后再试。"}
+                            return {"segments": [final_text]} if final_text else {"reply": "System is busy, please try again later."}
                         # fallback to non-stream
                         try:
                             fallback_endpoint = endpoint.replace("/stream", "")
@@ -431,7 +431,7 @@ def post_agent_message(payload: dict, idempotency_key: str = None, thread_id: st
                                     return {"segments": texts}
                         except Exception:
                             pass
-                        return {"reply": "系统繁忙，请稍后再试。"}
+                        return {"reply": "System is busy, please try again later."}
                     else:
                         resp = requests.post(endpoint, json=run_payload, headers=headers, timeout=20)
                 except Exception:
@@ -439,14 +439,14 @@ def post_agent_message(payload: dict, idempotency_key: str = None, thread_id: st
             else:
                 resp = requests.post(endpoint, json=payload, headers=headers, timeout=10)
         if resp.status_code >= 300:
-            return {"thread_id": None, "reply": "系统繁忙，请稍后再试。"}
+            return {"thread_id": None, "reply": "System is busy, please try again later."}
         try:
             data = resp.json()
             if "/a2a/" in endpoint_path:
                 try:
                     err = data.get("error")
                     if err:
-                        return {"thread_id": None, "reply": "系统繁忙，请稍后再试。"}
+                        return {"thread_id": None, "reply": "System is busy, please try again later."}
                     res = data.get("result") or {}
                     texts = []
                     msg = res.get("message") or {}
@@ -478,10 +478,10 @@ def post_agent_message(payload: dict, idempotency_key: str = None, thread_id: st
                     return {"segments": texts}
             return data
         except Exception:
-            return {"thread_id": None, "reply": "系统繁忙，请稍后再试。"}
+            return {"thread_id": None, "reply": "System is busy, please try again later."}
     except Exception:
         logger.exception("Agent request error")
-        return {"thread_id": None, "reply": "系统繁忙，请稍后再试。"}
+        return {"thread_id": None, "reply": "System is busy, please try again later."}
 
 def forward_chatwoot_to_agent(body: dict) -> None:
     try:
@@ -518,7 +518,7 @@ def forward_chatwoot_to_agent(body: dict) -> None:
         inbox_id_int = to_int(inbox_id)
         if acc_id_int is not None and conv_id_int is not None:
             try:
-                send_chatwoot_reply(acc_id_int, conv_id_int, "小助手正在加紧思考ing, 请稍后...", inbox_id_int)
+                send_chatwoot_reply(acc_id_int, conv_id_int, "Assistant is thinking, please wait...", inbox_id_int)
             except Exception:
                 pass
         thread_key = chatroom_id_raw or conversation_id
@@ -588,7 +588,7 @@ def forward_telegram_to_agent(body: dict) -> None:
         username = sender.get("first_name") or sender.get("username")
         if chat_id is not None:
             try:
-                send_telegram_message(chat_id, "小助手正在加紧思考ing, 请稍后...")
+                send_telegram_message(chat_id, "Assistant is thinking, please wait...")
             except Exception:
                 pass
         payload = {
