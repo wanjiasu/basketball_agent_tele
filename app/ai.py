@@ -66,6 +66,13 @@ def calc_accuracy(rows, start=None, end=None) -> float:
         dt = row.get("fixture_date")
         if dt is None:
             continue
+        try:
+            if getattr(dt, "tzinfo", None) is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+        except Exception:
+            continue
         if start and dt < start:
             continue
         if end and dt >= end:
