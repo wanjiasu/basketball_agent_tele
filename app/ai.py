@@ -94,19 +94,23 @@ def ai_history_reply(body: dict) -> str:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT e.fixture_id,
-                           e.predict_winner,
-                           e.result,
-                           e.confidence,
-                           f.fixture_date,
-                           f.home_name,
-                           f.away_name
-                    FROM ai_eval e
-                    INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
-                    WHERE COALESCE(e.if_bet, 0) = 1
-                      AND e.result IS NOT NULL
-                      AND e.confidence>0.6
-                    ORDER BY f.fixture_date DESC
+                    select t1.fixture_id,
+                           t1.predict_winner,
+                           t2.result,
+                           t1.confidence,
+                           t2.fixture_date,
+                           t2.home_name,
+                           t2.away_name
+                    from (
+                        select fixture_id, predict_winner, confidence, key_tag_evidence
+                        from ai_eval where if_bet = 1 and confidence > 0.6
+                    ) t1
+                    inner join (
+                        select fixture_id, home_name, away_name, fixture_date, result
+                        from fixtures
+                    ) t2 on t1.fixture_id = t2.fixture_id
+                    where t2.result is not null
+                    order by t2.fixture_date desc
                     """
                 )
                 fetched = cur.fetchall() or []
@@ -319,14 +323,17 @@ def ai_pick_reply(body: dict) -> str:
             try:
                 cur.execute(
                     """
-                    SELECT e.fixture_id, e.predict_winner, e.confidence, e.key_tag_evidence,
-                           f.fixture_date, f.home_name, f.away_name, e.home_odd, e.away_odd, e.draw_odd
-                    FROM ai_eval e
-                    INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
-                    WHERE COALESCE(e.if_bet, 0) = 1
-                      AND e.confidence > 0.6
-                      AND f.fixture_date >= %s AND f.fixture_date < %s
-                    ORDER BY e.confidence DESC, f.fixture_date ASC
+                    select t1.fixture_id, t1.predict_winner, t1.confidence, t1.key_tag_evidence,
+                           t2.fixture_date, t2.home_name, t2.away_name, t1.home_odd, t1.away_odd, t1.draw_odd
+                    from (
+                        select fixture_id, predict_winner, confidence, key_tag_evidence, home_odd, away_odd, draw_odd
+                        from ai_eval where if_bet = 1 and confidence > 0.6
+                    ) t1
+                    inner join (
+                        select fixture_id, fixture_date, home_name, away_name
+                        from fixtures where fixture_date >= %s and fixture_date < %s
+                    ) t2 on t1.fixture_id = t2.fixture_id
+                    order by t1.confidence desc, t2.fixture_date asc
                     """,
                     (start_utc, end_utc),
                 )
@@ -339,14 +346,17 @@ def ai_pick_reply(body: dict) -> str:
                     pass
                 cur.execute(
                     """
-                    SELECT e.fixture_id, e.predict_winner, e.confidence, e.key_tag_evidence,
-                           f.fixture_date, f.home_name, f.away_name
-                    FROM ai_eval e
-                    INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
-                    WHERE COALESCE(e.if_bet, 0) = 1
-                      AND e.confidence > 0.6
-                      AND f.fixture_date >= %s AND f.fixture_date < %s
-                    ORDER BY e.confidence DESC, f.fixture_date ASC
+                    select t1.fixture_id, t1.predict_winner, t1.confidence, t1.key_tag_evidence,
+                           t2.fixture_date, t2.home_name, t2.away_name
+                    from (
+                        select fixture_id, predict_winner, confidence, key_tag_evidence
+                        from ai_eval where if_bet = 1 and confidence > 0.6
+                    ) t1
+                    inner join (
+                        select fixture_id, fixture_date, home_name, away_name
+                        from fixtures where fixture_date >= %s and fixture_date < %s
+                    ) t2 on t1.fixture_id = t2.fixture_id
+                    order by t1.confidence desc, t2.fixture_date asc
                     """,
                     (start_utc, end_utc),
                 )
@@ -373,14 +383,12 @@ def ai_pick_reply(body: dict) -> str:
         when_str = when_local.strftime("%Y-%m-%d %H:%M") if when_local else ""
         tags = format_tags(key_tag_evidence)
         pw = str(predict_winner).strip().lower() if predict_winner is not None else ""
-        if pw in ("3", "home", "主胜", "h"):
+        if pw in ("home", "主胜", "h"):
             result_label = "Home Win"
-        elif pw in ("1", "draw", "平局", "主平", "d"):
-            result_label = "Draw"
-        elif pw in ("0", "away", "客胜", "a"):
+        elif pw in ("away", "客胜", "a"):
             result_label = "Away Win"
         else:
-            result_label = str(predict_winner)
+            result_label = "Unknown"
         try:
             confidence_pct = f"{round(float(confidence) * 100)}%"
         except Exception:
@@ -424,17 +432,17 @@ def ai_pick_text_for_country(country: str) -> str:
             try:
                 cur.execute(
                     """
-                    select e.fixture_id, e.predict_winner, e.confidence, e.key_tag_evidence,
-                           f.fixture_date, f.home_name, f.away_name, e.home_odd, e.away_odd, e.draw_odd
+                    select t1.fixture_id, t1.predict_winner, t1.confidence, t1.key_tag_evidence,
+                           t2.fixture_date, t2.home_name, t2.away_name, t1.home_odd, t1.away_odd, t1.draw_odd
                     from (
                         select fixture_id, predict_winner, confidence, key_tag_evidence, home_odd, away_odd, draw_odd
                         from ai_eval where if_bet = 1 and confidence > 0.6
-                    ) e
+                    ) t1
                     inner join (
                         select fixture_id, fixture_date, home_name, away_name
-                        from api_football_fixtures where fixture_date >= %s and fixture_date < %s
-                    ) f on e.fixture_id = f.fixture_id
-                    order by e.confidence desc, f.fixture_date asc
+                        from fixtures where fixture_date >= %s and fixture_date < %s
+                    ) t2 on t1.fixture_id = t2.fixture_id
+                    order by t1.confidence desc, t2.fixture_date asc
                     """,
                     (start_utc, end_utc),
                 )
@@ -447,17 +455,17 @@ def ai_pick_text_for_country(country: str) -> str:
                     pass
                 cur.execute(
                     """
-                    select e.fixture_id, e.predict_winner, e.confidence, e.key_tag_evidence,
-                           f.fixture_date, f.home_name, f.away_name
+                    select t1.fixture_id, t1.predict_winner, t1.confidence, t1.key_tag_evidence,
+                           t2.fixture_date, t2.home_name, t2.away_name
                     from (
                         select fixture_id, predict_winner, confidence, key_tag_evidence
                         from ai_eval where if_bet = 1 and confidence > 0.6
-                    ) e
+                    ) t1
                     inner join (
                         select fixture_id, fixture_date, home_name, away_name
-                        from api_football_fixtures where fixture_date >= %s and fixture_date < %s
-                    ) f on e.fixture_id = f.fixture_id
-                    order by e.confidence desc, f.fixture_date asc
+                        from fixtures where fixture_date >= %s and fixture_date < %s
+                    ) t2 on t1.fixture_id = t2.fixture_id
+                    order by t1.confidence desc, t2.fixture_date asc
                     """,
                     (start_utc, end_utc),
                 )
@@ -482,14 +490,12 @@ def ai_pick_text_for_country(country: str) -> str:
         when_str = when_local.strftime("%Y-%m-%d %H:%M") if when_local else ""
         tags = format_tags(key_tag_evidence)
         pw = str(predict_winner).strip().lower() if predict_winner is not None else ""
-        if pw in ("3", "home", "主胜", "h"):
+        if pw in ("home", "主胜", "h"):
             result_label = "Home Win"
-        elif pw in ("1", "draw", "平局", "主平", "d"):
-            result_label = "Draw"
-        elif pw in ("0", "away", "客胜", "a"):
+        elif pw in ("away", "客胜", "a"):
             result_label = "Away Win"
         else:
-            result_label = str(predict_winner)
+            result_label = "Unknown"
         try:
             confidence_pct = f"{round(float(confidence) * 100)}%"
         except Exception:
