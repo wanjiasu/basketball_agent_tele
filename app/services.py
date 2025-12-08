@@ -21,13 +21,10 @@ def send_chatwoot_reply(account_id: int, conversation_id: int, content: str, inb
         allowed = set()
     if allowed:
         try:
-            if inbox_id is not None:
-                if (int(account_id), int(inbox_id)) not in allowed:
-                    return
-            else:
-                a = int(account_id)
-                if all(pair[0] != a for pair in allowed):
-                    return
+            a = int(account_id)
+            i = int(inbox_id) if inbox_id is not None else None
+            if i is None or (a, i) not in allowed:
+                return
         except Exception:
             return
     endpoint = f"{base_url}/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages"

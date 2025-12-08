@@ -123,8 +123,8 @@ def extract_inbox_id(body: dict):
     message = data.get("message") or {}
     conversation = data.get("conversation") or {}
     inbox_id = (
-        data.get("inbox_id")
-        or message.get("inbox_id")
+        message.get("inbox_id")
         or conversation.get("inbox_id")
+        or data.get("inbox_id")
     )
     return inbox_id
