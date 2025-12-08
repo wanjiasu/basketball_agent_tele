@@ -157,21 +157,24 @@ def ai_yesterday_reply(body: dict) -> str:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT e.fixture_id,
-                           e.predict_winner,
-                           e.result,
-                           e.confidence,
-                           f.fixture_date,
-                           f.home_name,
-                           f.away_name,
-                           CASE WHEN (e.predict_winner)::text ~ '^-?\\d+$' AND (e.result)::text ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END AS success
-                    FROM ai_eval e
-                    INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
-                    WHERE COALESCE(e.if_bet, 0) = 1
-                      AND e.confidence > 0.6
-                      AND e.result IS NOT NULL
-                      AND f.fixture_date >= %s AND f.fixture_date < %s
-                    ORDER BY e.confidence DESC, f.fixture_date ASC
+                    select t1.fixture_id,
+                           t1.predict_winner,
+                           t2.result,
+                           t1.confidence,
+                           t2.fixture_date,
+                           t2.home_name,
+                           t2.away_name,
+                           CASE WHEN t1.predict_winner IS NOT NULL AND t2.result IS NOT NULL AND LOWER(t1.predict_winner) = LOWER(t2.result) THEN 1 ELSE 0 END AS success
+                    from (
+                        select fixture_id, predict_winner, confidence, key_tag_evidence
+                        from ai_eval where if_bet = 1 and confidence > 0.6
+                    ) t1
+                    inner join (
+                        select fixture_id, home_name, away_name, fixture_date, result
+                        from fixtures
+                    ) t2 on t1.fixture_id = t2.fixture_id
+                    where t2.fixture_date >= %s and t2.fixture_date < %s
+                    order by t1.confidence desc, t2.fixture_date asc
                     """,
                     (yesterday_start, yesterday_end),
                 )
@@ -192,16 +195,19 @@ def ai_yesterday_reply(body: dict) -> str:
                 logger.info(f"ai_yesterday_reply fetched_rows={len(rows)}")
                 cur.execute(
                     """
-                    SELECT COALESCE(ROUND(
-                               SUM(CASE WHEN (e.predict_winner)::text ~ '^-?\\d+$' AND (e.result)::text ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END)::numeric
+                    select COALESCE(ROUND(
+                               SUM(CASE WHEN t1.predict_winner IS NOT NULL AND t2.result IS NOT NULL AND LOWER(t1.predict_winner) = LOWER(t2.result) THEN 1 ELSE 0 END)::numeric
                                / NULLIF(COUNT(1), 0) * 100, 1
                            ), 0.0) AS acc
-                    FROM ai_eval e
-                    INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
-                    WHERE COALESCE(e.if_bet, 0) = 1
-                      AND e.confidence > 0.6
-                      AND e.result IS NOT NULL
-                      AND f.fixture_date >= %s AND f.fixture_date < %s
+                    from (
+                        select fixture_id, predict_winner, confidence, key_tag_evidence
+                        from ai_eval where if_bet = 1 and confidence > 0.6
+                    ) t1
+                    inner join (
+                        select fixture_id, home_name, away_name, fixture_date, result
+                        from fixtures
+                    ) t2 on t1.fixture_id = t2.fixture_id
+                    where t2.fixture_date >= %s and t2.fixture_date < %s
                     """,
                     (yesterday_start, yesterday_end),
                 )
@@ -237,21 +243,24 @@ def ai_yesterday_text_for_country(country: str) -> str:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT e.fixture_id,
-                           e.predict_winner,
-                           e.result,
-                           e.confidence,
-                           f.fixture_date,
-                           f.home_name,
-                           f.away_name,
-                           CASE WHEN (e.predict_winner)::text ~ '^-?\\d+$' AND (e.result)::text ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END AS success
-                    FROM ai_eval e
-                    INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
-                    WHERE COALESCE(e.if_bet, 0) = 1
-                      AND e.confidence > 0.6
-                      AND e.result IS NOT NULL
-                      AND f.fixture_date >= %s AND f.fixture_date < %s
-                    ORDER BY e.confidence DESC, f.fixture_date ASC
+                    select t1.fixture_id,
+                           t1.predict_winner,
+                           t2.result,
+                           t1.confidence,
+                           t2.fixture_date,
+                           t2.home_name,
+                           t2.away_name,
+                           CASE WHEN t1.predict_winner IS NOT NULL AND t2.result IS NOT NULL AND LOWER(t1.predict_winner) = LOWER(t2.result) THEN 1 ELSE 0 END AS success
+                    from (
+                        select fixture_id, predict_winner, confidence, key_tag_evidence
+                        from ai_eval where if_bet = 1 and confidence > 0.6
+                    ) t1
+                    inner join (
+                        select fixture_id, home_name, away_name, fixture_date, result
+                        from fixtures
+                    ) t2 on t1.fixture_id = t2.fixture_id
+                    where t2.fixture_date >= %s and t2.fixture_date < %s
+                    order by t1.confidence desc, t2.fixture_date asc
                     """,
                     (yesterday_start, yesterday_end),
                 )
@@ -263,16 +272,19 @@ def ai_yesterday_text_for_country(country: str) -> str:
                 logger.info(f"ai_yesterday_text_for_country fetched_rows={len(rows)}")
                 cur.execute(
                     """
-                    SELECT COALESCE(ROUND(
-                               SUM(CASE WHEN (e.predict_winner)::text ~ '^-?\\d+$' AND (e.result)::text ~ '^-?\\d+$' AND (e.predict_winner)::int = (e.result)::int THEN 1 ELSE 0 END)::numeric
+                    select COALESCE(ROUND(
+                               SUM(CASE WHEN t1.predict_winner IS NOT NULL AND t2.result IS NOT NULL AND LOWER(t1.predict_winner) = LOWER(t2.result) THEN 1 ELSE 0 END)::numeric
                                / NULLIF(COUNT(1), 0) * 100, 1
                            ), 0.0) AS acc
-                    FROM ai_eval e
-                    INNER JOIN api_football_fixtures f ON f.fixture_id = e.fixture_id
-                    WHERE COALESCE(e.if_bet, 0) = 1
-                      AND e.confidence > 0.6
-                      AND e.result IS NOT NULL
-                      AND f.fixture_date >= %s AND f.fixture_date < %s
+                    from (
+                        select fixture_id, predict_winner, confidence, key_tag_evidence
+                        from ai_eval where if_bet = 1 and confidence > 0.6
+                    ) t1
+                    inner join (
+                        select fixture_id, home_name, away_name, fixture_date, result
+                        from fixtures
+                    ) t2 on t1.fixture_id = t2.fixture_id
+                    where t2.fixture_date >= %s and t2.fixture_date < %s
                     """,
                     (yesterday_start, yesterday_end),
                 )
