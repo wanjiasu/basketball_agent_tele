@@ -24,6 +24,10 @@ def send_chatwoot_reply(account_id: int, conversation_id: int, content: str, inb
             a = int(account_id)
             i = int(inbox_id) if inbox_id is not None else None
             if i is None or (a, i) not in allowed:
+                try:
+                    logger.warning(f"Blocked reply due to whitelist acc={a} inbox={i} conv={conversation_id}")
+                except Exception:
+                    pass
                 return
         except Exception:
             return
@@ -492,7 +496,7 @@ def forward_chatwoot_to_agent(body: dict) -> None:
         username = sender.get("name") or data.get("name") or b.get("name")
         chatroom_id_raw = extract_chatroom_id(body)
         msg_id = data.get("id") or message.get("id")
-        inbox_id = (data.get("inbox_id") or message.get("inbox_id") or (data.get("conversation") or {}).get("inbox_id"))
+        inbox_id = ((data.get("conversation") or {}).get("inbox_id") or message.get("inbox_id") or data.get("inbox_id"))
         payload = {
             "messages": [{"role": "user", "content": content or ""}],
             "metadata": {
@@ -687,7 +691,7 @@ def store_message(body: dict) -> None:
         contact = data.get("contact") or {}
         external_id = sender.get("id") or data.get("sender_id") or message.get("sender_id")
         msg_id = data.get("id") or message.get("id")
-        inbox_id = (data.get("inbox_id") or message.get("inbox_id") or (data.get("conversation") or {}).get("inbox_id"))
+        inbox_id = ((data.get("conversation") or {}).get("inbox_id") or message.get("inbox_id") or data.get("inbox_id"))
         source_id = (
             data.get("source_id")
             or message.get("source_id")

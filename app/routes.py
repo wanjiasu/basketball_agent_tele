@@ -46,6 +46,10 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
             allowed = set()
         if allowed and (inbox_id_int is None or acc_id_int is None or (acc_id_int, inbox_id_int) not in allowed):
             disallowed = True
+            try:
+                logger.warning(f"Disallowed inbox pair acc={acc_id_int} inbox={inbox_id_int} conv={conversation_id}")
+            except Exception:
+                pass
         try:
             logger.info(
                 f"Webhook extracted content={str(content)[:200]} type={message_type} conv_id={conversation_id} account_id={account_id}"
