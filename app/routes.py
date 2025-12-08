@@ -4,7 +4,7 @@ import psycopg
 import asyncio
 from fastapi import APIRouter, Request, BackgroundTasks
 from datetime import datetime, timezone
-from .config import chatwoot_base_url, chatwoot_token, telegram_token
+from .config import chatwoot_base_url, chatwoot_token, telegram_token, allowed_account_inbox_pairs
 from .db import pg_dsn
 from .utils import extract_chatwoot_fields, is_help_command, is_ai_pick_command, is_ai_history_command, is_ai_yesterday_command, is_start_command, normalize_country, extract_chatroom_id, to_int, extract_inbox_id
 from .services import send_chatwoot_reply, send_telegram_country_keyboard, answer_callback_query, set_user_country, store_message, send_lark_help_alert, send_telegram_message, forward_chatwoot_to_agent, forward_telegram_to_agent
@@ -54,17 +54,24 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                 conv_id_int = to_int(conversation_id)
                 inbox_id_int = to_int(extract_inbox_id(body))
                 if acc_id_int is not None and conv_id_int is not None:
-                    ack = (
-                        ("Selected Philippines" if choice == "PH" else "Selected United States")
-                        + "\n\n"
-                        + "👇 You can tap the bottom-left menu or send these commands:\n"
-                        + "🤖 /ai_pick - View today's AI picks\n"
-                        + "📊 /ai_history - View AI history\n"
-                        + "🆘 /help - Contact human support"
-                    )
-                    background_tasks.add_task(
-                        send_chatwoot_reply, acc_id_int, conv_id_int, ack, inbox_id_int
-                    )
+                    try:
+                        allowed = allowed_account_inbox_pairs()
+                    except Exception:
+                        allowed = set()
+                    if allowed and (acc_id_int is None or inbox_id_int is None or (acc_id_int, inbox_id_int) not in allowed):
+                        pass
+                    else:
+                        ack = (
+                            ("Selected Philippines" if choice == "PH" else "Selected United States")
+                            + "\n\n"
+                            + "👇 You can tap the bottom-left menu or send these commands:\n"
+                            + "🤖 /ai_pick - View today's AI picks\n"
+                            + "📊 /ai_history - View AI history\n"
+                            + "🆘 /help - Contact human support"
+                        )
+                        background_tasks.add_task(
+                            send_chatwoot_reply, acc_id_int, conv_id_int, ack, inbox_id_int
+                        )
             if is_ai_pick_command(content):
                 try:
                     reply = ai_pick_reply(body)
@@ -130,9 +137,14 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
             conv_id_int = to_int(conversation_id)
             inbox_id_int = to_int(extract_inbox_id(body))
             if acc_id_int is not None and conv_id_int is not None:
-                background_tasks.add_task(
-                    send_chatwoot_reply, acc_id_int, conv_id_int, WELCOME_TEXT, inbox_id_int
-                )
+                try:
+                    allowed = allowed_account_inbox_pairs()
+                except Exception:
+                    allowed = set()
+                if not allowed or (inbox_id_int is not None and (acc_id_int, inbox_id_int) in allowed):
+                    background_tasks.add_task(
+                        send_chatwoot_reply, acc_id_int, conv_id_int, WELCOME_TEXT, inbox_id_int
+                    )
             try:
                 chatroom_id_raw = extract_chatroom_id(body)
                 background_tasks.add_task(send_telegram_country_keyboard, chatroom_id_raw)
