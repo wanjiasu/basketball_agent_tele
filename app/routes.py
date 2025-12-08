@@ -37,6 +37,15 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
         except Exception:
             logger.info(f"Webhook body_unserializable={str(body)[:2000]}")
         content, message_type, conversation_id, account_id = extract_chatwoot_fields(body)
+        acc_id_int = to_int(account_id)
+        inbox_id_int = to_int(extract_inbox_id(body))
+        disallowed = False
+        try:
+            allowed = allowed_account_inbox_pairs()
+        except Exception:
+            allowed = set()
+        if allowed and (inbox_id_int is None or acc_id_int is None or (acc_id_int, inbox_id_int) not in allowed):
+            disallowed = True
         try:
             logger.info(
                 f"Webhook extracted content={str(content)[:200]} type={message_type} conv_id={conversation_id} account_id={account_id}"
@@ -48,36 +57,27 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
             if is_help_command(content):
                 background_tasks.add_task(send_lark_help_alert, body)
             choice = normalize_country(content)
-            if choice:
+            if choice and not disallowed:
                 background_tasks.add_task(set_user_country, body, content)
-                acc_id_int = to_int(account_id)
                 conv_id_int = to_int(conversation_id)
-                inbox_id_int = to_int(extract_inbox_id(body))
                 if acc_id_int is not None and conv_id_int is not None:
-                    try:
-                        allowed = allowed_account_inbox_pairs()
-                    except Exception:
-                        allowed = set()
-                    if allowed and (acc_id_int is None or inbox_id_int is None or (acc_id_int, inbox_id_int) not in allowed):
-                        pass
-                    else:
-                        ack = (
-                            ("Selected Philippines" if choice == "PH" else "Selected United States")
-                            + "\n\n"
-                            + "👇 You can tap the bottom-left menu or send these commands:\n"
-                            + "🤖 /ai_pick - View today's AI picks\n"
-                            + "📊 /ai_history - View AI history\n"
-                            + "🆘 /help - Contact human support"
-                        )
-                        background_tasks.add_task(
-                            send_chatwoot_reply, acc_id_int, conv_id_int, ack, inbox_id_int
-                        )
+                    ack = (
+                        ("Selected Philippines" if choice == "PH" else "Selected United States")
+                        + "\n\n"
+                        + "👇 You can tap the bottom-left menu or send these commands:\n"
+                        + "🤖 /ai_pick - View today's AI picks\n"
+                        + "📊 /ai_history - View AI history\n"
+                        + "🆘 /help - Contact human support"
+                    )
+                    background_tasks.add_task(
+                        send_chatwoot_reply, acc_id_int, conv_id_int, ack, inbox_id_int
+                    )
             if is_ai_pick_command(content):
                 try:
+                    if disallowed:
+                        raise Exception("inbox not allowed")
                     reply = ai_pick_reply(body)
-                    acc_id_int = to_int(account_id)
                     conv_id_int = to_int(conversation_id)
-                    inbox_id_int = to_int(extract_inbox_id(body))
                     if acc_id_int is not None and conv_id_int is not None:
                         if isinstance(reply, list):
                             for seg in reply:
@@ -100,10 +100,10 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                     logger.exception("AI pick reply error")
             if is_ai_history_command(content):
                 try:
+                    if disallowed:
+                        raise Exception("inbox not allowed")
                     reply = ai_history_reply(body)
-                    acc_id_int = to_int(account_id)
                     conv_id_int = to_int(conversation_id)
-                    inbox_id_int = to_int(extract_inbox_id(body))
                     if acc_id_int is not None and conv_id_int is not None:
                         background_tasks.add_task(
                             send_chatwoot_reply, acc_id_int, conv_id_int, reply, inbox_id_int
@@ -112,10 +112,10 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                     logger.exception("AI history reply error")
             if is_ai_yesterday_command(content):
                 try:
+                    if disallowed:
+                        raise Exception("inbox not allowed")
                     reply = ai_yesterday_reply(body)
-                    acc_id_int = to_int(account_id)
                     conv_id_int = to_int(conversation_id)
-                    inbox_id_int = to_int(extract_inbox_id(body))
                     if acc_id_int is not None and conv_id_int is not None:
                         background_tasks.add_task(
                             send_chatwoot_reply, acc_id_int, conv_id_int, reply, inbox_id_int
@@ -131,20 +131,14 @@ async def chatwoot_webhook(request: Request, background_tasks: BackgroundTasks):
                 or is_start_command(content)
                 or normalize_country(content)
             ):
-                background_tasks.add_task(forward_chatwoot_to_agent, body)
+                if not disallowed:
+                    background_tasks.add_task(forward_chatwoot_to_agent, body)
         if is_start_command(content) and message_type == "incoming":
-            acc_id_int = to_int(account_id)
             conv_id_int = to_int(conversation_id)
-            inbox_id_int = to_int(extract_inbox_id(body))
-            if acc_id_int is not None and conv_id_int is not None:
-                try:
-                    allowed = allowed_account_inbox_pairs()
-                except Exception:
-                    allowed = set()
-                if not allowed or (inbox_id_int is not None and (acc_id_int, inbox_id_int) in allowed):
-                    background_tasks.add_task(
-                        send_chatwoot_reply, acc_id_int, conv_id_int, WELCOME_TEXT, inbox_id_int
-                    )
+            if acc_id_int is not None and conv_id_int is not None and not disallowed:
+                background_tasks.add_task(
+                    send_chatwoot_reply, acc_id_int, conv_id_int, WELCOME_TEXT, inbox_id_int
+                )
             try:
                 chatroom_id_raw = extract_chatroom_id(body)
                 background_tasks.add_task(send_telegram_country_keyboard, chatroom_id_raw)

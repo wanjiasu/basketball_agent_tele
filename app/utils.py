@@ -45,7 +45,7 @@ def is_start_command(text: str) -> bool:
     t = str(text or "").strip().lower()
     if not t:
         return False
-    return t.startswith("/start")
+    return t.startswith("/start") or t.startswith("/star")
 
 def is_ai_pick_command(text: str) -> bool:
     t = str(text or "").strip().lower()
