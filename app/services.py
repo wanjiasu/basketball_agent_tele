@@ -649,13 +649,35 @@ def set_user_country(body: dict, choice_text: str) -> None:
         country = normalize_country(choice_text)
         if not country:
             return
-        external_id = None
-        chatroom_id_raw = extract_chatroom_id(body)
         b = body or {}
         data = b.get("data") or b.get("payload") or b
-        sender = data.get("sender") or data.get("contact") or {}
-        external_id = sender.get("id") or data.get("sender_id") or (data.get("contact") or {}).get("id")
-        username = sender.get("name") or data.get("name") or b.get("name")
+        msg = data.get("message") or b.get("message") or {}
+        cb = data.get("callback_query") or b.get("callback_query") or {}
+        chat_id = None
+        sender_id = None
+        username = None
+        try:
+            chat_id = ((msg.get("chat") or {}) or {}).get("id")
+            sender = msg.get("from") or {}
+            sender_id = sender.get("id")
+            username = sender.get("first_name") or sender.get("username")
+        except Exception:
+            pass
+        if chat_id is None and cb:
+            try:
+                m = cb.get("message") or {}
+                chat_id = ((m.get("chat") or {}) or {}).get("id")
+                sender = cb.get("from") or {}
+                sender_id = sender.get("id")
+                username = sender.get("first_name") or sender.get("username")
+            except Exception:
+                pass
+        if chat_id is None:
+            chat_id = extract_chatroom_id(body)
+        if sender_id is None:
+            sender = data.get("sender") or data.get("contact") or {}
+            sender_id = sender.get("id") or data.get("sender_id") or (data.get("contact") or {}).get("id")
+            username = username or sender.get("name") or data.get("name") or b.get("name")
         with psycopg.connect(pg_dsn()) as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -670,9 +692,9 @@ def set_user_country(body: dict, choice_text: str) -> None:
                     RETURNING id
                     """,
                     (
-                        str(external_id) if external_id is not None else None,
+                        str(sender_id) if sender_id is not None else None,
                         username,
-                        str(chatroom_id_raw) if chatroom_id_raw is not None else None,
+                        str(chat_id) if chat_id is not None else None,
                         country,
                     ),
                 )

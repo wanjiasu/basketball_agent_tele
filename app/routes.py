@@ -52,7 +52,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         chat = msg.get("chat") or {}
         chat_id = chat.get("id")
         if is_start_command(text):
-            background_tasks.add_task(send_telegram_country_keyboard, chat.get("id"))
+            background_tasks.add_task(send_telegram_message, chat_id, WELCOME_TEXT)
+            background_tasks.add_task(send_telegram_country_keyboard, chat_id)
         choice = normalize_country(text)
         if choice:
             background_tasks.add_task(set_user_country, body, text)
@@ -98,4 +99,17 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             background_tasks.add_task(set_user_country, body, data)
             from .services import answer_callback_query
             background_tasks.add_task(answer_callback_query, token, cb.get("id"), "Selection recorded")
+            m = cb.get("message") or {}
+            ch = m.get("chat") or {}
+            cid = ch.get("id")
+            if cid is not None:
+                ack = (
+                    ("Selected Philippines" if choice == "PH" else "Selected United States")
+                    + "\n\n"
+                    + "👇 You can send these commands:\n"
+                    + "🤖 /ai_pick - View today's AI picks\n"
+                    + "📊 /ai_history - View AI history\n"
+                    + "🗓 /ai_yesterday - View yesterday summary\n"
+                )
+                background_tasks.add_task(send_telegram_message, cid, ack)
     return {"status": "ok"}

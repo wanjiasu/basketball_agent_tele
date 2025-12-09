@@ -98,6 +98,23 @@ def extract_chatwoot_fields(body: dict):
 def extract_chatroom_id(body: dict):
     b = body or {}
     data = b.get("data") or b.get("payload") or b
+    msg = data.get("message") or b.get("message") or {}
+    try:
+        c = msg.get("chat") or {}
+        cid = c.get("id")
+        if cid is not None:
+            return cid
+    except Exception:
+        pass
+    cb = data.get("callback_query") or b.get("callback_query") or {}
+    try:
+        m = cb.get("message") or {}
+        c2 = m.get("chat") or {}
+        cid2 = c2.get("id")
+        if cid2 is not None:
+            return cid2
+    except Exception:
+        pass
     message = data.get("message") or {}
     conversation = data.get("conversation") or {}
     attrs_conv = conversation.get("additional_attributes") or {}
