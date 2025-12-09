@@ -14,6 +14,13 @@ def telegram_token() -> str:
 def telegram_webhook_url() -> str:
     return os.getenv("TELEGRAM_WEBHOOK_URL", "")
 
+def telegram_support_group_url() -> str:
+    try:
+        u = os.getenv("TELEGRAM_SUPPORT_GROUP_URL", "") or os.getenv("TG_SUPPORT_GROUP_URL", "")
+        return u.strip()
+    except Exception:
+        return ""
+
 def lark_webhook_url() -> str:
     return os.getenv("LARK_BOT_WEBHOOK_URL", "")
 

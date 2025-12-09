@@ -4,7 +4,7 @@ import psycopg
 import asyncio
 from fastapi import APIRouter, Request, BackgroundTasks
 from datetime import datetime, timezone
-from .config import telegram_token
+from .config import telegram_token, telegram_support_group_url
 from .db import pg_dsn
 from .utils import is_help_command, is_ai_pick_command, is_ai_history_command, is_ai_yesterday_command, is_start_command, normalize_country, extract_chatroom_id, to_int
 from .services import send_telegram_country_keyboard, answer_callback_query, set_user_country, send_telegram_message, forward_telegram_to_agent
@@ -12,10 +12,10 @@ from .ai import ai_pick_reply, ai_history_reply, ai_yesterday_reply
 
 logger = logging.getLogger(__name__)
 
-WELCOME_TEXT = """Welcome to the support bot.
-We provide AI match recommendations and fundamentals analysis.
-Coverage highlights: Premier League, La Liga, Serie A, Bundesliga, Ligue 1, UCL, World Cup.
-Please choose your country so we can show times in your local timezone.
+WELCOME_TEXT = """Welcome to the NBA assistant.
+We provide AI NBA game picks and fundamentals analysis.
+Coverage highlights: NBA Regular Season and Playoffs.
+Please choose your country so we can show tip-off times in your local timezone.
 """
 
 router = APIRouter()
@@ -68,6 +68,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     background_tasks.add_task(send_telegram_message, chat_id, reply)
             except Exception:
                 logger.exception("Telegram AI pick reply error")
+        if is_help_command(text) and chat_id is not None:
+            try:
+                url = telegram_support_group_url() or "url"
+                background_tasks.add_task(send_telegram_message, chat_id, f"Our Telegram support group: {url}")
+            except Exception:
+                logger.exception("Telegram help reply error")
         if is_ai_history_command(text) and chat_id is not None:
             try:
                 hint = {"data": {"message": {"additional_attributes": {"chat_id": chat_id}}}}
